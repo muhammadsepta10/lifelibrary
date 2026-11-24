@@ -94,7 +94,7 @@ async function catatEksemplar(
   if (!bukunya) return ditolak("Buku untuk Eksemplar ini belum ada di server");
 
   const [kat] = await tx.select().from(kategori).where(eq(kategori.id, e.kategoriId));
-  if (!kat) return ditolak("Kategori tidak dikenal");
+  if (!kat || kat.dihapus) return ditolak("Kategori tidak dikenal");
 
   const waktu = new Date(e.waktuDicatat);
   if (Number.isNaN(waktu.getTime())) return ditolak("Waktu pencatatan tidak valid");

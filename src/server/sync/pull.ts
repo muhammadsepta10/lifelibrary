@@ -1,7 +1,7 @@
 import { asc, eq, gt, inArray } from "drizzle-orm";
-import { buku, bukuKontributor, eksemplar, kategori, kontributor } from "@/server/db/schema";
+import { aturanKategori, buku, bukuKontributor, eksemplar, kategori, kontributor, lokasi } from "@/server/db/schema";
 import type { Db } from "@/server/db/types";
-import type { BukuDto, EksemplarDto, KategoriDto, PullResponse } from "@/lib/sync-protocol";
+import type { AturanKategoriDto, BukuDto, EksemplarDto, KategoriDto, LokasiDto, PullResponse } from "@/lib/sync-protocol";
 
 /** Perubahan sejak kursor (berdasarkan `updatedAt` server). Kursor null = semuanya. */
 export async function pull(db: Db, kursor: string | null): Promise<PullResponse> {
@@ -13,6 +13,16 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     .from(kategori)
     .where(sejak ? gt(kategori.updatedAt, sejak) : undefined)
     .orderBy(asc(kategori.updatedAt));
+  const lokasiRows = await db
+    .select()
+    .from(lokasi)
+    .where(sejak ? gt(lokasi.updatedAt, sejak) : undefined)
+    .orderBy(asc(lokasi.updatedAt));
+  const aturanRows = await db
+    .select()
+    .from(aturanKategori)
+    .where(sejak ? gt(aturanKategori.updatedAt, sejak) : undefined)
+    .orderBy(asc(aturanKategori.updatedAt));
   const bukuRows = await db
     .select()
     .from(buku)
@@ -50,6 +60,16 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     nama: k.nama,
     warna: k.warna,
     diarsipkan: k.diarsipkan,
+    dihapus: k.dihapus,
+  }));
+  const lokasiDto: LokasiDto[] = lokasiRows.map((l) => ({ id: l.id, nama: l.nama, dihapus: l.dihapus }));
+  const aturanDto: AturanKategoriDto[] = aturanRows.map((a) => ({
+    id: a.id,
+    jenis: a.jenis as AturanKategoriDto["jenis"],
+    pola: a.pola,
+    kategoriId: a.kategoriId,
+    prioritas: a.prioritas,
+    dihapus: a.dihapus,
   }));
   const bukuDto: BukuDto[] = bukuRows.map((b) => ({
     id: b.id,
@@ -77,13 +97,15 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     status: e.status as EksemplarDto["status"],
   }));
 
-  const terbaru = [...kategoriRows, ...bukuRows, ...eksemplarRows]
+  const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...bukuRows, ...eksemplarRows]
     .map((r) => r.updatedAt.getTime())
     .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
 
   return {
     kursor: terbaru === null ? kursor : new Date(terbaru).toISOString(),
     kategori: kategoriDto,
+    lokasi: lokasiDto,
+    aturanKategori: aturanDto,
     buku: bukuDto,
     eksemplar: eksemplarDto,
   };
