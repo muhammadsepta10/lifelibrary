@@ -21,11 +21,11 @@ export default function KoleksiPage() {
       )}
       <ul className="flex flex-col gap-3 p-5">
         {koleksi?.map((k) => (
-          <li
-            key={k.eksemplarId}
-            data-testid="eksemplar"
-            className="flex gap-3 rounded-2xl bg-white p-3.5 shadow-[0_2px_8px_rgba(0,0,0,.08)]"
-          >
+          <li key={k.eksemplarId} data-testid="eksemplar">
+            <Link
+              href={`/buku?id=${k.bukuId}`}
+              className="flex gap-3 rounded-2xl bg-white p-3.5 shadow-[0_2px_8px_rgba(0,0,0,.08)] focus-visible:ring-2 focus-visible:ring-forest-link"
+            >
             <div
               className="h-[72px] w-12 shrink-0 rounded"
               style={{ background: k.kategori.warna }}
@@ -43,7 +43,11 @@ export default function KoleksiPage() {
                 </span>
                 <StatusChip menungguSinkron={k.menungguSinkron} />
               </div>
+              <p className="mt-1.5 font-mono text-xs text-ink-muted" data-testid="nomor-panggil">
+                {k.nomorPanggil.teks}
+              </p>
             </div>
+            </Link>
           </li>
         ))}
       </ul>

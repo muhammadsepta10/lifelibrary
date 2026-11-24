@@ -26,7 +26,7 @@ import { isoLokal } from "./waktu";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
-export type { NomorPanggil } from "./nomor-panggil";
+export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -282,11 +282,11 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       menungguSinkron: true,
     };
     await db.eksemplar.add(row);
-    const { perluCetak: _perluCetak, ...fieldSimpan } = lengkap;
+    const { tanggalMasuk, asal, harga, kondisi, lokasiId } = lengkap;
     await antre({
       id: uuid(),
       jenis: "eksemplar.catat",
-      eksemplar: { ...fieldSimpan, id: eksemplarId, bukuId, kategoriId, waktuDicatat },
+      eksemplar: { id: eksemplarId, bukuId, kategoriId, waktuDicatat, tanggalMasuk, asal, harga, kondisi, lokasiId },
     });
   }
 
@@ -518,7 +518,21 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       await tulisDaftar(res);
       await db.buku.bulkPut(res.buku.map((b) => ({ ...b })));
       await db.eksemplar.bulkPut(
-        res.eksemplar.map(({ tahunPencatatan: _tahun, ...e }) => ({ ...e, menungguSinkron: false })),
+        res.eksemplar.map((e) => ({
+          id: e.id,
+          bukuId: e.bukuId,
+          kategoriId: e.kategoriId,
+          nomorInduk: e.nomorInduk,
+          waktuDicatat: e.waktuDicatat,
+          status: e.status,
+          lokasiId: e.lokasiId,
+          tanggalMasuk: e.tanggalMasuk,
+          asal: e.asal,
+          harga: e.harga,
+          kondisi: e.kondisi,
+          perluCetak: e.perluCetak,
+          menungguSinkron: false,
+        })),
       );
       await db.meta.put({ key: META_KURSOR, value: res.kursor });
     });

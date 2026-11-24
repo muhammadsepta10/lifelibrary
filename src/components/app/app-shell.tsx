@@ -15,6 +15,7 @@ const NAV = [
 ] as const;
 
 function aktif(pathname: string, href: string) {
+  if (href === "/koleksi") return pathname.startsWith("/koleksi") || pathname.startsWith("/buku");
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
