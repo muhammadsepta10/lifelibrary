@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -76,15 +77,37 @@ export const buku = pgTable(
     judul: text("judul").notNull(),
     penerbit: text("penerbit"),
     tahun: integer("tahun"),
+    kota: text("kota"),
+    edisi: text("edisi"),
+    seri: text("seri"),
+    jilid: text("jilid"),
+    bahasa: text("bahasa"),
+    halaman: integer("halaman"),
+    sinopsis: text("sinopsis"),
+    sampul: text("sampul"),
+    subjek: jsonb("subjek").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    kelasDdc: text("kelas_ddc"),
+    /**
+     * Waktu terakhir tiap field diubah Pemilik di perangkat (UTC ISO, kunci = nama
+     * field). Dasar penyelesaian konflik per field (tiket #5); belum dipakai
+     * untuk menolak perubahan.
+     */
+    fieldWaktu: jsonb("field_waktu").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
     updatedAt: serverTime("updated_at"),
   },
   (t) => [index("buku_updated_at_idx").on(t.updatedAt)],
 );
 
-export const kontributor = pgTable("kontributor", {
-  id: uuid("id").primaryKey(),
-  nama: text("nama").notNull(),
-});
+export const kontributor = pgTable(
+  "kontributor",
+  {
+    id: uuid("id").primaryKey(),
+    nama: text("nama").notNull(),
+    /** Nama dinormalkan (`normalisasiNama`); nama sama = Kontributor yang sama. */
+    namaNormal: text("nama_normal").notNull(),
+  },
+  (t) => [index("kontributor_nama_normal_idx").on(t.namaNormal)],
+);
 
 export const bukuKontributor = pgTable(
   "buku_kontributor",
@@ -121,9 +144,20 @@ export const eksemplar = pgTable(
       mode: "date",
     }).notNull(),
     status: text("status").notNull().default("aktif"),
+    lokasiId: uuid("lokasi_id").references(() => lokasi.id),
+    /** Boleh kosong: koleksi lama sering tidak diketahui tanggal masuknya. */
+    tanggalMasuk: date("tanggal_masuk", { mode: "string" }),
+    asal: text("asal"),
+    /** Rupiah utuh. */
+    harga: integer("harga"),
+    kondisi: text("kondisi"),
+    /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Dibaca Antrean Cetak. */
+    perluCetak: boolean("perlu_cetak").notNull().default(false),
+    /** Lihat `buku.fieldWaktu`. */
+    fieldWaktu: jsonb("field_waktu").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
     updatedAt: serverTime("updated_at"),
   },
-  (t) => [index("eksemplar_updated_at_idx").on(t.updatedAt)],
+  (t) => [index("eksemplar_updated_at_idx").on(t.updatedAt), index("eksemplar_lokasi_idx").on(t.lokasiId)],
 );
 
 /** Penghitung Nomor Induk per (kode Kategori, tahun pencatatan). */

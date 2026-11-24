@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
+  KelolaDitolakError,
   lokasiBaruSchema,
   lokasiUbahSchema,
   type KelolaTransport,
   type LokasiDto,
 } from "@/lib/kelola-protocol";
-import { lokasi } from "@/server/db/schema";
+import { eksemplar, lokasi } from "@/server/db/schema";
 import type { Db } from "@/server/db/types";
 import { idValid, parse, sekarangServer, tidakDitemukan } from "./galat";
 
@@ -41,18 +42,30 @@ export function lokasiApi(db: Db): KelolaTransport["lokasi"] {
     },
 
     /**
-     * Baris tetap ada sebagai penanda hapus untuk pull. Belum ada Eksemplar
-     * yang menunjuk Lokasi; saat itu ada, penghapusan Lokasi terpakai harus
-     * diatur di sini.
+     * Baris tetap ada sebagai penanda hapus untuk pull. Lokasi yang masih
+     * dipakai Eksemplar aktif tidak bisa dihapus: Pemilik memindahkannya dulu.
      */
     async hapus(id) {
       await pastikanAda(db, id);
-      const [l] = await db
-        .update(lokasi)
-        .set({ dihapus: true, updatedAt: sekarangServer })
-        .where(eq(lokasi.id, id))
-        .returning();
-      return dto(l);
+      return db.transaction(async (tx) => {
+        const dipakai = await tx
+          .select({ id: eksemplar.id })
+          .from(eksemplar)
+          .where(and(eq(eksemplar.lokasiId, id), eq(eksemplar.status, "aktif")));
+        if (dipakai.length > 0) {
+          throw new KelolaDitolakError(
+            "konflik",
+            null,
+            `Lokasi masih dipakai ${dipakai.length} Eksemplar. Pindahkan Eksemplar itu dulu`,
+          );
+        }
+        const [l] = await tx
+          .update(lokasi)
+          .set({ dihapus: true, updatedAt: sekarangServer })
+          .where(eq(lokasi.id, id))
+          .returning();
+        return dto(l);
+      });
     },
   };
 }
