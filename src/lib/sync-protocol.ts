@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  bukuFieldSchemas,
+  eksemplarFieldSchemas,
+  kontributorSchema,
+  type FieldBuku,
+  type FieldEksemplar,
+  type KontributorDto,
+} from "./buku-fields";
 import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
 
 export type { AturanKategoriDto, KategoriDto, LokasiDto };
@@ -18,35 +26,56 @@ export const waktuPerangkat = z
     "waktuDicatat harus berformat ISO 8601 dengan offset",
   );
 
-export const kontributorSchema = z.object({
-  id: uuid,
-  nama: z.string().trim().min(1),
-  peran: z.enum(["pengarang", "penerjemah", "editor"]),
-  utama: z.boolean(),
-});
+export { kontributorSchema };
+
+const eksemplarFields = z.object(eksemplarFieldSchemas);
+const bukuFields = z.object(bukuFieldSchemas);
+
+/** Perubahan Buku: field yang tidak disebut tidak berubah; `null` mengosongkan. */
+export const perubahanBukuSchema = bukuFields
+  .partial()
+  .extend({ kontributor: z.array(kontributorSchema).min(1).optional() });
+/** Perubahan Eksemplar: field yang tidak disebut tidak berubah; `null` mengosongkan. */
+export const perubahanEksemplarSchema = eksemplarFields.partial();
 
 export const mutasiSchema = z.discriminatedUnion("jenis", [
   z.object({
     id: uuid,
     jenis: z.literal("buku.tambah"),
-    buku: z.object({
-      id: uuid,
-      judul: z.string().trim().min(1),
-      penerbit: z.string().trim().min(1).nullish(),
-      tahun: z.number().int().nullish(),
-      isbn13: z.string().regex(/^97[89]\d{10}$/).nullish(),
-      kontributor: z.array(kontributorSchema),
-    }),
+    buku: bukuFields.extend({ id: uuid, kontributor: z.array(kontributorSchema) }),
   }),
   z.object({
     id: uuid,
     jenis: z.literal("eksemplar.catat"),
-    eksemplar: z.object({
+    eksemplar: eksemplarFields.extend({
       id: uuid,
       bukuId: uuid,
       kategoriId: uuid,
       waktuDicatat: waktuPerangkat,
     }),
+  }),
+  /** Mengubah Buku yang sudah ada; `waktuUbah` = saat Pemilik mengubah di perangkat. */
+  z.object({
+    id: uuid,
+    jenis: z.literal("buku.ubah"),
+    bukuId: uuid,
+    waktuUbah: waktuPerangkat,
+    perubahan: perubahanBukuSchema,
+  }),
+  z.object({
+    id: uuid,
+    jenis: z.literal("eksemplar.ubah"),
+    eksemplarId: uuid,
+    waktuUbah: waktuPerangkat,
+    perubahan: perubahanEksemplarSchema,
+  }),
+  /** Koreksi Kategori: mengubah Nomor Panggil, tidak pernah Nomor Induk (ADR 0001). */
+  z.object({
+    id: uuid,
+    jenis: z.literal("eksemplar.koreksiKategori"),
+    eksemplarId: uuid,
+    kategoriId: uuid,
+    waktuUbah: waktuPerangkat,
   }),
 ]);
 
@@ -63,16 +92,14 @@ export type HasilMutasi =
 
 export type PushResponse = { hasil: HasilMutasi[] };
 
-export type BukuDto = {
+export type { KontributorDto };
+
+export type BukuDto = FieldBuku & {
   id: string;
-  judul: string;
-  penerbit: string | null;
-  tahun: number | null;
-  isbn13: string | null;
-  kontributor: { id: string; nama: string; peran: "pengarang" | "penerjemah" | "editor"; utama: boolean }[];
+  kontributor: KontributorDto[];
 };
 
-export type EksemplarDto = {
+export type EksemplarDto = FieldEksemplar & {
   id: string;
   bukuId: string;
   kategoriId: string;
@@ -80,6 +107,8 @@ export type EksemplarDto = {
   tahunPencatatan: number;
   waktuDicatat: string;
   status: "aktif" | "keluar";
+  /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Antrean Cetak memakainya. */
+  perluCetak: boolean;
 };
 
 export type PullResponse = {

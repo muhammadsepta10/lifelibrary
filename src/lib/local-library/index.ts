@@ -1,5 +1,7 @@
 import { liveQuery } from "dexie";
+import type { Asal, FieldBuku, FieldEksemplar, KontributorDto, Kondisi, Peran } from "@/lib/buku-fields";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
+import { gabungKontributor, normalisasiNama, periksaPengarangUtama } from "@/lib/kontributor";
 import {
   type AturanKategoriDto,
   type KategoriDto,
@@ -8,6 +10,8 @@ import {
 } from "@/lib/kelola-protocol";
 import type { Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
 import {
+  bukuKosong,
+  eksemplarKosong,
   LocalDb,
   type AturanKategoriRow,
   type BukuRow,
@@ -16,10 +20,13 @@ import {
   type LokasiRow,
 } from "./db";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
+import { periksaFieldBuku, periksaFieldEksemplar, samaNilai } from "./masukan";
+import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 import { isoLokal } from "./waktu";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
+export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -42,8 +49,49 @@ export type ItemKoleksi = {
   nomorInduk: string | null;
   /** Nomor Induk, atau "——" selama belum diberikan server. */
   nomorIndukTampil: string;
+  /** Dihitung dari data terkini (Kategori, Pengarang Utama, judul). */
+  nomorPanggil: NomorPanggil;
   menungguSinkron: boolean;
   waktuDicatat: string;
+};
+
+export type InputKontributor = { nama: string; peran?: Peran; utama?: boolean };
+
+/** Isian field Eksemplar; yang tidak disebut atau kosong disimpan sebagai null. */
+export type InputFieldEksemplar = Partial<FieldEksemplar>;
+
+export type InputBukuBaru = Partial<Omit<FieldBuku, "judul">> & {
+  judul: string;
+  /** Tepat satu `utama: true` (Pengarang Utama). */
+  kontributor: InputKontributor[];
+  /** Eksemplar pertama; Kategori wajib. */
+  eksemplar: { kategoriId: string } & InputFieldEksemplar;
+};
+
+/** Perubahan Buku: hanya field yang disebut yang berubah; null/"" mengosongkan. */
+export type PerubahanBuku = Partial<FieldBuku> & { kontributor?: InputKontributor[] };
+
+export type EksemplarDetail = {
+  id: string;
+  nomorInduk: string | null;
+  nomorIndukTampil: string;
+  menungguSinkron: boolean;
+  status: "aktif" | "keluar";
+  kategori: { id: string; kode: string; nama: string; warna: string };
+  nomorPanggil: NomorPanggil;
+  lokasi: { id: string; nama: string } | null;
+  tanggalMasuk: string | null;
+  asal: Asal | null;
+  harga: number | null;
+  kondisi: Kondisi | null;
+  waktuDicatat: string;
+  perluCetak: boolean;
+};
+
+export type DetailBuku = BukuRow & {
+  pengarangUtama: KontributorDto | null;
+  /** Urut menurut waktu dicatat (terlama dulu). */
+  eksemplar: EksemplarDetail[];
 };
 
 /** Kategori, Lokasi, dan Aturan Kategori yang tersalin di perangkat (untuk layar kelola). */
@@ -132,38 +180,99 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   });
 
   async function tambahBukuManual(input: { judul: string; pengarang: string; kategoriId: string }) {
+    if (!input.pengarang.trim()) throw new ValidasiError("pengarang", "Pengarang wajib diisi");
+    return tambahBuku({
+      judul: input.judul,
+      kontributor: [{ nama: input.pengarang, peran: "pengarang", utama: true }],
+      eksemplar: { kategoriId: input.kategoriId },
+    });
+  }
+
+  /** Kontributor yang sudah dikenal di perangkat, menurut nama ternormalisasi. */
+  async function kontributorDikenal() {
+    const dikenal = new Map<string, { id: string; nama: string }>();
+    for (const b of await db.buku.toArray()) {
+      for (const k of b.kontributor) {
+        const kunci = normalisasiNama(k.nama);
+        if (!dikenal.has(kunci)) dikenal.set(kunci, { id: k.id, nama: k.nama });
+      }
+    }
+    return dikenal;
+  }
+
+  /**
+   * Merapikan Kontributor masukan: nama yang sama (setelah dinormalkan)
+   * dipakai ulang dari Kontributor yang sudah ada dan digabung; wajib tepat
+   * satu Pengarang Utama.
+   */
+  async function siapkanKontributor(input: InputKontributor[]): Promise<KontributorDto[]> {
+    const dikenal = await kontributorDikenal();
+    const daftar = input
+      .filter((k) => k.nama.trim() !== "")
+      .map((k) => {
+        const nama = k.nama.trim();
+        const ada = dikenal.get(normalisasiNama(nama));
+        return {
+          id: ada?.id ?? uuid(),
+          nama: ada?.nama ?? nama,
+          peran: k.peran ?? ("pengarang" as const),
+          utama: k.utama ?? false,
+        };
+      });
+    const gabung = gabungKontributor(daftar);
+    const galat = periksaPengarangUtama(gabung);
+    if (galat) throw new ValidasiError("kontributor", galat);
+    return gabung;
+  }
+
+  async function validasiLokasi(lokasiId: string | null | undefined) {
+    if (lokasiId && !(await db.lokasi.get(lokasiId))) {
+      throw new ValidasiError("lokasiId", "Lokasi tidak ditemukan");
+    }
+  }
+
+  async function validasiIsbnBebas(isbn13: string | null | undefined, kecualiBukuId?: string) {
+    if (!isbn13) return;
+    const sama = await db.buku.where("isbn13").equals(isbn13).first();
+    if (sama && sama.id !== kecualiBukuId) {
+      throw new ValidasiError("isbn13", "ISBN ini sudah tercatat. Tambahkan Eksemplar ke Buku yang ada");
+    }
+  }
+
+  /** Buku baru lengkap dengan Eksemplar pertamanya, disimpan lokal lalu masuk outbox. */
+  async function tambahBuku(input: InputBukuBaru) {
     await siap;
-    const judul = input.judul.trim();
-    const pengarang = input.pengarang.trim();
-    if (!judul) throw new ValidasiError("judul", "Judul wajib diisi");
-    if (!pengarang) throw new ValidasiError("pengarang", "Pengarang wajib diisi");
-    await validasiKategori(input.kategoriId);
+    const { eksemplar: inputEksemplar, kontributor: inputKontributor, ...inputBuku } = input;
+    const field = periksaFieldBuku({ ...bukuKosong(), ...inputBuku });
+    if (!field.judul) throw new ValidasiError("judul", "Judul wajib diisi");
+    const { kategoriId, ...inputFieldEksemplar } = inputEksemplar;
+    await validasiKategori(kategoriId);
+    const fieldEksemplar = periksaFieldEksemplar(inputFieldEksemplar);
+    await validasiLokasi(fieldEksemplar.lokasiId);
 
     const bukuId = uuid();
     const eksemplarId = uuid();
     await db.transaction("rw", [db.buku, db.eksemplar, db.outbox], async () => {
-      const buku: BukuRow = {
-        id: bukuId,
-        judul,
-        penerbit: null,
-        tahun: null,
-        isbn13: null,
-        kontributor: [{ id: uuid(), nama: pengarang, peran: "pengarang", utama: true }],
-      };
+      await validasiIsbnBebas(field.isbn13);
+      const kontributor = await siapkanKontributor(inputKontributor);
+      const buku = { id: bukuId, ...field, kontributor } as BukuRow;
       await db.buku.add(buku);
-      await antre({
-        id: uuid(),
-        jenis: "buku.tambah",
-        buku: { id: buku.id, judul, kontributor: buku.kontributor },
-      });
-      await simpanEksemplar(eksemplarId, bukuId, input.kategoriId);
+      await antre({ id: uuid(), jenis: "buku.tambah", buku });
+      await simpanEksemplar(eksemplarId, bukuId, kategoriId, fieldEksemplar);
     });
     return { bukuId, eksemplarId };
   }
 
-  async function simpanEksemplar(eksemplarId: string, bukuId: string, kategoriId: string) {
+  async function simpanEksemplar(
+    eksemplarId: string,
+    bukuId: string,
+    kategoriId: string,
+    field: Partial<FieldEksemplar> = {},
+  ) {
     const waktuDicatat = isoLokal(now());
+    const lengkap = { ...eksemplarKosong(), ...field };
     const row: EksemplarRow = {
+      ...lengkap,
       id: eksemplarId,
       bukuId,
       kategoriId,
@@ -173,22 +282,99 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       menungguSinkron: true,
     };
     await db.eksemplar.add(row);
+    const { tanggalMasuk, asal, harga, kondisi, lokasiId } = lengkap;
     await antre({
       id: uuid(),
       jenis: "eksemplar.catat",
-      eksemplar: { id: eksemplarId, bukuId, kategoriId, waktuDicatat },
+      eksemplar: { id: eksemplarId, bukuId, kategoriId, waktuDicatat, tanggalMasuk, asal, harga, kondisi, lokasiId },
     });
   }
 
-  async function catatEksemplar(input: { bukuId: string; kategoriId: string }) {
+  /** Eksemplar baru untuk Buku yang sudah ada (mis. dari halaman Detail Buku). */
+  async function catatEksemplar(input: { bukuId: string; kategoriId: string } & InputFieldEksemplar) {
     await siap;
-    await validasiKategori(input.kategoriId);
-    if (!(await db.buku.get(input.bukuId))) throw new ValidasiError("bukuId", "Buku tidak ditemukan");
+    const { bukuId, kategoriId, ...inputField } = input;
+    await validasiKategori(kategoriId);
+    if (!(await db.buku.get(bukuId))) throw new ValidasiError("bukuId", "Buku tidak ditemukan");
+    const field = periksaFieldEksemplar(inputField);
+    await validasiLokasi(field.lokasiId);
     const eksemplarId = uuid();
     await db.transaction("rw", [db.eksemplar, db.outbox], () =>
-      simpanEksemplar(eksemplarId, input.bukuId, input.kategoriId),
+      simpanEksemplar(eksemplarId, bukuId, kategoriId, field),
     );
     return { eksemplarId };
+  }
+
+  /**
+   * Mengubah Buku (termasuk Kontributor). Hanya field yang benar-benar
+   * berbeda yang masuk outbox; tanpa perbedaan tidak terjadi apa-apa.
+   */
+  async function ubahBuku(bukuId: string, perubahan: PerubahanBuku) {
+    await siap;
+    const { kontributor: inputKontributor, ...inputField } = perubahan;
+    const field = periksaFieldBuku(inputField);
+    await db.transaction("rw", [db.buku, db.outbox], async () => {
+      const buku = await db.buku.get(bukuId);
+      if (!buku) throw new ValidasiError("bukuId", "Buku tidak ditemukan");
+      const beda: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(field)) {
+        if (!samaNilai(buku[k as keyof BukuRow], v)) beda[k] = v;
+      }
+      if ("isbn13" in beda) await validasiIsbnBebas(beda.isbn13 as string | null, bukuId);
+      if (inputKontributor) {
+        const kontributor = await siapkanKontributor(inputKontributor);
+        if (!samaNilai(buku.kontributor, kontributor)) beda.kontributor = kontributor;
+      }
+      if (Object.keys(beda).length === 0) return;
+      await db.buku.update(bukuId, beda as Partial<BukuRow>);
+      await antre({ id: uuid(), jenis: "buku.ubah", bukuId, waktuUbah: isoLokal(now()), perubahan: beda });
+    });
+  }
+
+  /** Mengubah data penerimaan Eksemplar (tanggal masuk, asal, harga, kondisi, Lokasi). */
+  async function ubahEksemplar(eksemplarId: string, perubahan: InputFieldEksemplar) {
+    await siap;
+    const field = periksaFieldEksemplar(perubahan);
+    await validasiLokasi(field.lokasiId);
+    await db.transaction("rw", [db.eksemplar, db.outbox], async () => {
+      const e = await db.eksemplar.get(eksemplarId);
+      if (!e) throw new ValidasiError("eksemplarId", "Eksemplar tidak ditemukan");
+      const beda: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(field)) {
+        if (!samaNilai(e[k as keyof EksemplarRow], v)) beda[k] = v;
+      }
+      if (Object.keys(beda).length === 0) return;
+      await db.eksemplar.update(eksemplarId, beda as Partial<EksemplarRow>);
+      await antre({
+        id: uuid(),
+        jenis: "eksemplar.ubah",
+        eksemplarId,
+        waktuUbah: isoLokal(now()),
+        perubahan: beda,
+      });
+    });
+  }
+
+  /**
+   * Koreksi Kategori: Nomor Panggil mengikuti Kategori baru, Nomor Induk
+   * tetap (ADR 0001). Eksemplar ditandai perlu cetak ulang Label.
+   */
+  async function koreksiKategori(eksemplarId: string, kategoriId: string) {
+    await siap;
+    await validasiKategori(kategoriId);
+    await db.transaction("rw", [db.eksemplar, db.outbox], async () => {
+      const e = await db.eksemplar.get(eksemplarId);
+      if (!e) throw new ValidasiError("eksemplarId", "Eksemplar tidak ditemukan");
+      if (e.kategoriId === kategoriId) return;
+      await db.eksemplar.update(eksemplarId, { kategoriId, perluCetak: true });
+      await antre({
+        id: uuid(),
+        jenis: "eksemplar.koreksiKategori",
+        eksemplarId,
+        kategoriId,
+        waktuUbah: isoLokal(now()),
+      });
+    });
   }
 
   async function daftarKoleksi(): Promise<ItemKoleksi[]> {
@@ -196,8 +382,61 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return bacaKoleksi();
   }
 
+  async function detailBuku(bukuId: string): Promise<DetailBuku | null> {
+    await siap;
+    return bacaDetailBuku(bukuId);
+  }
+
   // Tanpa `await siap` di dalam: dipakai liveQuery, yang kehilangan pelacakan
   // bila di-await promise non-Dexie.
+  async function bacaDetailBuku(bukuId: string): Promise<DetailBuku | null> {
+    const buku = await db.buku.get(bukuId);
+    if (!buku) return null;
+    const [eksemplar, kategori, lokasi] = await Promise.all([
+      db.eksemplar.where("bukuId").equals(bukuId).toArray(),
+      db.kategori.toArray(),
+      db.lokasi.toArray(),
+    ]);
+    const katById = new Map(kategori.map((k) => [k.id, k]));
+    const lokasiById = new Map(lokasi.map((l) => [l.id, l]));
+    const utama = pengarangUtama(buku);
+    return {
+      ...buku,
+      pengarangUtama: utama ?? null,
+      eksemplar: eksemplar
+        .sort((a, b) => a.waktuDicatat.localeCompare(b.waktuDicatat) || a.id.localeCompare(b.id))
+        .flatMap((e) => {
+          const k = katById.get(e.kategoriId);
+          if (!k) return [];
+          const l = e.lokasiId ? lokasiById.get(e.lokasiId) : undefined;
+          return [
+            {
+              id: e.id,
+              nomorInduk: e.nomorInduk,
+              nomorIndukTampil: e.nomorInduk ?? NOMOR_INDUK_KOSONG,
+              menungguSinkron: e.menungguSinkron,
+              status: e.status,
+              kategori: { id: k.id, kode: k.kode, nama: k.nama, warna: k.warna },
+              nomorPanggil: hitungNomorPanggil({
+                kodeKategori: k.kode,
+                pengarangUtama: utama?.nama ?? "",
+                judul: buku.judul,
+              }),
+              lokasi: l ? { id: l.id, nama: l.nama } : null,
+              tanggalMasuk: e.tanggalMasuk,
+              asal: e.asal,
+              harga: e.harga,
+              kondisi: e.kondisi,
+              waktuDicatat: e.waktuDicatat,
+              perluCetak: e.perluCetak,
+            },
+          ];
+        }),
+    };
+  }
+
+  const pengarangUtama = (b: BukuRow) => b.kontributor.find((c) => c.utama) ?? b.kontributor[0];
+
   async function bacaKoleksi(): Promise<ItemKoleksi[]> {
     const [eksemplar, buku, kategori] = await Promise.all([
       db.eksemplar.toArray(),
@@ -213,7 +452,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         const b = bukuById.get(e.bukuId);
         const k = katById.get(e.kategoriId);
         if (!b || !k) return [];
-        const utama = b.kontributor.find((c) => c.utama) ?? b.kontributor[0];
+        const utama = pengarangUtama(b);
         return [
           {
             eksemplarId: e.id,
@@ -223,6 +462,11 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
             kategori: { kode: k.kode, nama: k.nama, warna: k.warna },
             nomorInduk: e.nomorInduk,
             nomorIndukTampil: e.nomorInduk ?? NOMOR_INDUK_KOSONG,
+            nomorPanggil: hitungNomorPanggil({
+              kodeKategori: k.kode,
+              pengarangUtama: utama?.nama ?? "",
+              judul: b.judul,
+            }),
             menungguSinkron: e.menungguSinkron,
             waktuDicatat: e.waktuDicatat,
           },
@@ -281,6 +525,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
           nomorInduk: e.nomorInduk,
           waktuDicatat: e.waktuDicatat,
           status: e.status,
+          lokasiId: e.lokasiId,
+          tanggalMasuk: e.tanggalMasuk,
+          asal: e.asal,
+          harga: e.harga,
+          kondisi: e.kondisi,
+          perluCetak: e.perluCetak,
           menungguSinkron: false,
         })),
       );
@@ -398,12 +648,19 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     daftarAturanKategori,
     kelola,
     tambahBukuManual,
+    tambahBuku,
     catatEksemplar,
+    ubahBuku,
+    ubahEksemplar,
+    koreksiKategori,
     daftarKoleksi,
+    detailBuku,
     statusSinkronisasi,
     sinkronkan,
     hapusDataPerangkat,
     /** Pemantau reaktif untuk UI; mengembalikan fungsi berhenti. */
+    pantauDetailBuku: (bukuId: string, cb: (detail: DetailBuku | null) => void) =>
+      pantau(() => bacaDetailBuku(bukuId), cb),
     pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
     pantauDaftar: (cb: (daftar: DaftarLokal) => void) => pantau(bacaDaftar, cb),
     pantauStatus: (cb: (status: StatusSinkronisasi) => void) => pantau(bacaStatus, cb),

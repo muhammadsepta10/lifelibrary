@@ -15,6 +15,13 @@
       "when": 1795528568649,
       "tag": "0001_kelola_daftar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795529715710,
+      "tag": "0002_data_buku_lengkap",
+      "breakpoints": true
     }
   ]
 }

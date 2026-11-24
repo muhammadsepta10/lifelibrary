@@ -163,6 +163,33 @@ describe("Kelola Lokasi", () => {
     expect((await ditolak(kelola.lokasi.hapus(crypto.randomUUID()))).jenis).toBe("tidak-ditemukan");
   });
 
+  it("Lokasi yang masih dipakai Eksemplar tidak bisa dihapus; setelah dikosongkan bisa", async () => {
+    const rak = await kelola.lokasi.buat({ nama: "Rak A" });
+    const { mutasi, eksemplarId } = mutasiBukuDanEksemplar({ kode: "FIK" });
+    const catat = mutasi[1] as Extract<(typeof mutasi)[number], { jenis: "eksemplar.catat" }>;
+    catat.eksemplar.lokasiId = rak.id;
+    await sync.push({ mutasi });
+
+    const e = await ditolak(kelola.lokasi.hapus(rak.id));
+    expect(e).toMatchObject({ jenis: "konflik" });
+    expect(e.pesan).toContain("1 Eksemplar");
+    expect((await sync.pull(null)).lokasi).toMatchObject([{ id: rak.id, dihapus: false }]);
+
+    await sync.push({
+      mutasi: [
+        {
+          id: crypto.randomUUID(),
+          jenis: "eksemplar.ubah",
+          eksemplarId,
+          waktuUbah: "2026-03-14T10:00:00+07:00",
+          perubahan: { lokasiId: null },
+        },
+      ],
+    });
+    await kelola.lokasi.hapus(rak.id);
+    expect((await sync.pull(null)).lokasi).toMatchObject([{ id: rak.id, dihapus: true }]);
+  });
+
   it("pull dengan kursor hanya membawa perubahan setelahnya", async () => {
     await kelola.lokasi.buat({ nama: "Rak A" });
     const { kursor } = await sync.pull(null);

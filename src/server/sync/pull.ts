@@ -75,7 +75,17 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     id: b.id,
     judul: b.judul,
     penerbit: b.penerbit,
+    kota: b.kota,
     tahun: b.tahun,
+    edisi: b.edisi,
+    seri: b.seri,
+    jilid: b.jilid,
+    bahasa: b.bahasa,
+    halaman: b.halaman,
+    sinopsis: b.sinopsis,
+    sampul: b.sampul,
+    subjek: b.subjek,
+    kelasDdc: b.kelasDdc,
     isbn13: b.isbn13,
     kontributor: kontribusi
       .filter((k) => k.bukuId === b.id)
@@ -95,6 +105,12 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     tahunPencatatan: e.tahunPencatatan,
     waktuDicatat: e.waktuDicatatPerangkat.toISOString(),
     status: e.status as EksemplarDto["status"],
+    lokasiId: e.lokasiId,
+    tanggalMasuk: e.tanggalMasuk,
+    asal: e.asal as EksemplarDto["asal"],
+    harga: e.harga,
+    kondisi: e.kondisi as EksemplarDto["kondisi"],
+    perluCetak: e.perluCetak,
   }));
 
   const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...bukuRows, ...eksemplarRows]
