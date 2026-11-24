@@ -1,12 +1,25 @@
 import { liveQuery } from "dexie";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
+import {
+  type AturanKategoriDto,
+  type KategoriDto,
+  type KelolaTransport,
+  type LokasiDto,
+} from "@/lib/kelola-protocol";
 import type { Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
-import { LocalDb, type BukuRow, type EksemplarRow, type KategoriRow } from "./db";
-import { ValidasiError } from "./errors";
+import {
+  LocalDb,
+  type AturanKategoriRow,
+  type BukuRow,
+  type EksemplarRow,
+  type KategoriRow,
+  type LokasiRow,
+} from "./db";
+import { ButuhKoneksiError, ValidasiError } from "./errors";
 import { isoLokal } from "./waktu";
 
-export { ValidasiError } from "./errors";
-export type { KategoriRow } from "./db";
+export { ButuhKoneksiError, ValidasiError } from "./errors";
+export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -31,6 +44,20 @@ export type ItemKoleksi = {
   nomorIndukTampil: string;
   menungguSinkron: boolean;
   waktuDicatat: string;
+};
+
+/** Kategori, Lokasi, dan Aturan Kategori yang tersalin di perangkat (untuk layar kelola). */
+export type DaftarLokal = {
+  /** Termasuk Kategori yang diarsipkan. */
+  kategori: KategoriRow[];
+  lokasi: LokasiRow[];
+  aturanKategori: AturanKategoriRow[];
+};
+
+type PerubahanDaftar = {
+  kategori?: KategoriDto[];
+  lokasi?: LokasiDto[];
+  aturanKategori?: AturanKategoriDto[];
 };
 
 export type StatusSinkronisasi = {
@@ -68,10 +95,41 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return kat;
   }
 
+  /** Pilihan Kategori: yang diarsipkan tidak muncul. */
   async function daftarKategori(): Promise<KategoriRow[]> {
-    await siap;
-    return (await db.kategori.toArray()).filter((k) => !k.diarsipkan);
+    return (await daftarKategoriTermasukArsip()).filter((k) => !k.diarsipkan);
   }
+
+  async function daftarKategoriTermasukArsip(): Promise<KategoriRow[]> {
+    await siap;
+    return bacaKategori();
+  }
+
+  async function daftarLokasi(): Promise<LokasiRow[]> {
+    await siap;
+    return bacaLokasi();
+  }
+
+  /** Terurut menurut prioritas: angka 1 diperiksa paling dulu. */
+  async function daftarAturanKategori(): Promise<AturanKategoriRow[]> {
+    await siap;
+    return bacaAturan();
+  }
+
+  // Pembaca tanpa `await siap`, supaya bisa dipakai liveQuery.
+  const bacaKategori = async () =>
+    (await db.kategori.toArray()).sort((a, b) => a.kode.localeCompare(b.kode));
+  const bacaLokasi = async () =>
+    (await db.lokasi.toArray()).sort((a, b) => a.nama.localeCompare(b.nama, "id"));
+  const bacaAturan = async () =>
+    (await db.aturanKategori.toArray()).sort(
+      (a, b) => a.prioritas - b.prioritas || a.pola.localeCompare(b.pola),
+    );
+  const bacaDaftar = async (): Promise<DaftarLokal> => ({
+    kategori: await bacaKategori(),
+    lokasi: await bacaLokasi(),
+    aturanKategori: await bacaAturan(),
+  });
 
   async function tambahBukuManual(input: { judul: string; pengarang: string; kategoriId: string }) {
     await siap;
@@ -183,9 +241,37 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return { menunggu: outbox.length - ditolak, ditolak };
   }
 
+  const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori];
+
+  /** Tulis perubahan daftar; yang bertanda `dihapus` dibuang dari salinan lokal. */
+  async function tulisDaftar(p: PerubahanDaftar) {
+    const kategori = p.kategori ?? [];
+    const hapusKategori = kategori.filter((k) => k.dihapus).map((k) => k.id);
+    await db.kategori.bulkPut(
+      kategori
+        .filter((k) => !k.dihapus)
+        .map(({ id, kode, nama, warna, diarsipkan }) => ({ id, kode, nama, warna, diarsipkan })),
+    );
+    await db.kategori.bulkDelete(hapusKategori);
+    // Aturan milik Kategori yang dihapus ikut hilang (server menghapusnya juga).
+    await db.aturanKategori.where("kategoriId").anyOf(hapusKategori).delete();
+
+    const lokasi = p.lokasi ?? [];
+    await db.lokasi.bulkPut(lokasi.filter((l) => !l.dihapus).map(({ id, nama }) => ({ id, nama })));
+    await db.lokasi.bulkDelete(lokasi.filter((l) => l.dihapus).map((l) => l.id));
+
+    const aturan = p.aturanKategori ?? [];
+    await db.aturanKategori.bulkPut(
+      aturan
+        .filter((a) => !a.dihapus)
+        .map(({ id, jenis, pola, kategoriId, prioritas }) => ({ id, jenis, pola, kategoriId, prioritas })),
+    );
+    await db.aturanKategori.bulkDelete(aturan.filter((a) => a.dihapus).map((a) => a.id));
+  }
+
   async function terapkanPull(res: PullResponse) {
-    await db.transaction("rw", [db.kategori, db.buku, db.eksemplar, db.meta], async () => {
-      await db.kategori.bulkPut(res.kategori);
+    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.meta], async () => {
+      await tulisDaftar(res);
       await db.buku.bulkPut(res.buku.map((b) => ({ ...b })));
       await db.eksemplar.bulkPut(
         res.eksemplar.map((e) => ({
@@ -239,6 +325,54 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return { dikirim, ditolak };
   }
 
+  /**
+   * Perintah kelola Kategori, Lokasi, dan Aturan Kategori. Hanya online
+   * (ADR 0004): lewat `transport`, bukan outbox. Hasilnya langsung ditulis ke
+   * salinan lokal. Tanpa koneksi, perintah gagal dengan `ButuhKoneksiError`
+   * dan data lokal tidak berubah.
+   */
+  function kelola(transport: KelolaTransport) {
+    async function jalankan<D>(panggil: () => Promise<D>, simpan: (d: D) => PerubahanDaftar) {
+      await siap;
+      let hasil: D;
+      try {
+        hasil = await panggil();
+      } catch (e) {
+        // fetch melempar TypeError bila jaringan tidak ada; penolakan server dan galat lain dilewatkan.
+        if (e instanceof TypeError) throw new ButuhKoneksiError();
+        throw e;
+      }
+      await db.transaction("rw", TABEL_DAFTAR, () => tulisDaftar(simpan(hasil)));
+      return hasil;
+    }
+
+    function perintah<Baru, Ubah, Dto>(
+      t: {
+        buat(i: Baru): Promise<Dto>;
+        ubah(id: string, u: Ubah): Promise<Dto>;
+        hapus(id: string): Promise<Dto>;
+      },
+      simpan: (d: Dto) => PerubahanDaftar,
+    ) {
+      return {
+        buat: (input: Baru) => jalankan(() => t.buat(input), simpan),
+        ubah: (id: string, perubahan: Ubah) => jalankan(() => t.ubah(id, perubahan), simpan),
+        hapus: (id: string) => jalankan(() => t.hapus(id), simpan),
+      };
+    }
+
+    const kategori = perintah(transport.kategori, (d) => ({ kategori: [d] }));
+    return {
+      kategori: {
+        ...kategori,
+        arsipkan: (id: string) => kategori.ubah(id, { diarsipkan: true }),
+        pulihkan: (id: string) => kategori.ubah(id, { diarsipkan: false }),
+      },
+      lokasi: perintah(transport.lokasi, (d) => ({ lokasi: [d] })),
+      aturanKategori: perintah(transport.aturanKategori, (d) => ({ aturanKategori: [d] })),
+    };
+  }
+
   function pantau<T>(baca: () => Promise<T>, cb: (nilai: T) => void) {
     let berhenti = false;
     let sub: { unsubscribe(): void } | undefined;
@@ -259,6 +393,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
 
   return {
     daftarKategori,
+    daftarKategoriTermasukArsip,
+    daftarLokasi,
+    daftarAturanKategori,
+    kelola,
     tambahBukuManual,
     catatEksemplar,
     daftarKoleksi,
@@ -267,6 +405,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     hapusDataPerangkat,
     /** Pemantau reaktif untuk UI; mengembalikan fungsi berhenti. */
     pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
+    pantauDaftar: (cb: (daftar: DaftarLokal) => void) => pantau(bacaDaftar, cb),
     pantauStatus: (cb: (status: StatusSinkronisasi) => void) => pantau(bacaStatus, cb),
   };
 }

@@ -8,3 +8,14 @@ export class ValidasiError extends Error {
     this.name = "ValidasiError";
   }
 }
+
+/**
+ * Mengelola Kategori, Lokasi, dan Aturan Kategori hanya bisa online (ADR 0004).
+ * Pesannya dipakai apa adanya sebagai keterangan di UI.
+ */
+export class ButuhKoneksiError extends Error {
+  constructor() {
+    super("Butuh koneksi");
+    this.name = "ButuhKoneksiError";
+  }
+}
