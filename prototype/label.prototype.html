@@ -1,0 +1,286 @@
+<!doctype html>
+<!--
+  PROTOTYPE — THROWAWAY. Jangan dipakai sebagai kode produksi.
+  Pertanyaan: seperti apa Label (stiker) yang dicetak bulk dari Antrean Cetak ke lembar A4/F4?
+  Tiga desain Label (A/B/C), dipilih lewat ?variant=, bar mengambang di bawah, atau tombol panah ← →.
+  Template Label (ukuran kertas, ukuran Label, margin, jarak, mulai dari posisi N) bisa diubah di panel.
+  Tombol "Cetak" memakai ukuran mm sungguhan: cetak dengan skala 100% / "Actual size".
+  Arah visual: variant B "Rak Sampul" (hijau tua #1F3A33, oranye #E76F51, Literata).
+  Data palsu di memori.
+-->
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE · lifelibrary · Label</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Literata:opsz,wght@7..72,600;7..72,700;7..72,800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style id="pagestyle"></style>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: #F3EEE4; color: #1E2420; }
+  .app { display: grid; grid-template-columns: 340px 1fr; min-height: 100vh; }
+  .panel { background: #1F3A33; color: #F3EEE4; padding: 22px; display: flex; flex-direction: column; gap: 18px; padding-bottom: 100px; }
+  .panel h1 { font: 700 24px Literata; }
+  .panel .sub { font-size: 13px; opacity: .75; margin-top: 4px; }
+  .panel h3 { font: 600 11px Inter; text-transform: uppercase; letter-spacing: .1em; opacity: .7; margin-bottom: 8px; }
+  .seg { display: flex; background: rgba(255,255,255,.1); border-radius: 12px; padding: 4px; }
+  .seg button { flex: 1; border: 0; background: transparent; color: inherit; padding: 8px; border-radius: 9px; font: 600 13px Inter; cursor: pointer; }
+  .seg button.on { background: #F3EEE4; color: #1F3A33; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fields label { font-size: 11px; opacity: .8; display: flex; flex-direction: column; gap: 4px; }
+  .fields input { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: #fff; border-radius: 8px; padding: 8px; font: 500 14px 'JetBrains Mono'; width: 100%; }
+  .queue { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; }
+  .queue label { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+  .queue .no { font: 500 11px 'JetBrains Mono'; opacity: .7; margin-left: auto; }
+  .queue .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .print { background: #E76F51; color: #fff; border: 0; height: 52px; border-radius: 16px; font: 600 16px Inter; cursor: pointer; }
+  .ghostbtn { background: transparent; color: #F3EEE4; border: 1px solid rgba(255,255,255,.3); height: 40px; border-radius: 12px; font: 500 13px Inter; cursor: pointer; }
+  .state { font: 400 11px/1.5 'JetBrains Mono'; background: rgba(0,0,0,.25); border-radius: 10px; padding: 10px; white-space: pre-wrap; }
+  .main { padding: 24px 32px 120px; overflow: auto; }
+  .main h2 { font: 700 20px Literata; margin-bottom: 4px; }
+  .main .note { font-size: 13px; color: #5c625e; margin-bottom: 16px; max-width: 760px; line-height: 1.5; }
+  .zoomrow { display: flex; gap: 32px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 32px; }
+  .zoom { transform-origin: top left; }
+  .zoomwrap { position: relative; }
+  .cap { font-size: 12px; color: #5c625e; margin-top: 8px; }
+  .sheets { display: flex; gap: 24px; flex-wrap: wrap; }
+  .sheetwrap { overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.15); background: #fff; }
+  .sheet { position: relative; background: #fff; transform-origin: top left; }
+  .cell { position: absolute; overflow: hidden; }
+  .cell.empty { outline: 1px dashed #d6d0c4; outline-offset: -1px; }
+  .cell.used { outline: 1px dashed #c7c0b2; outline-offset: -1px; background: repeating-linear-gradient(45deg, #f3f0ea 0 2mm, #fff 2mm 4mm); }
+  .testmode .cell { outline: .3mm solid #E76F51 !important; outline-offset: -.15mm; }
+  .testmode .cell > * { visibility: hidden; }
+  svg.bc { display: block; }
+
+  /* ---------- switcher (bukan bagian desain) ---------- */
+  .proto-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 99; display: flex; align-items: center; gap: 6px; background: #111; color: #fff; padding: 6px; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,.35); font: 500 13px Inter; }
+  .proto-bar button { background: #2a2a2a; color: #fff; border: 0; height: 36px; width: 36px; border-radius: 999px; cursor: pointer; font-size: 16px; }
+  .proto-bar .lbl { padding: 0 14px; min-width: 260px; text-align: center; }
+
+  /* =========== Label A — Gabungan (satu stiker lebar) =========== */
+  .LA { width: 100%; height: 100%; display: flex; font-family: Inter; color: #1E2420; background: #fff; }
+  .LA .call { width: 36%; color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; font: 800 13pt/1.1 Literata; letter-spacing: .02em; }
+  .LA .call .l3 { font-weight: 600; font-size: 12pt; }
+  .LA .right { flex: 1; padding: 2.2mm 2.5mm 1.8mm; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+  .LA .ttl { font: 600 6.5pt/1.15 Literata; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .LA .brand { font: 600 5pt Inter; letter-spacing: .12em; text-transform: uppercase; color: #1F3A33; opacity: .7; }
+  .LA .no { font: 700 7.5pt 'JetBrains Mono'; text-align: center; }
+
+  /* =========== Label B — Pasangan (punggung + barcode, digunting) =========== */
+  .LB { width: 100%; height: 100%; display: flex; background: #fff; color: #1E2420; }
+  .LB .spine { width: 17mm; display: flex; flex-direction: column; border-right: .3mm dashed #9aa19d; }
+  .LB .band { height: 5mm; color: #fff; font: 700 4.6pt Inter; letter-spacing: .04em; white-space: nowrap; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .LB .stack { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; font: 800 11pt/1.15 Literata; }
+  .LB .stack .l3 { font-weight: 600; }
+  .LB .bcpart { flex: 1; padding: 2mm 3mm; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; }
+  .LB .top { display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; }
+  .LB .brand { font: 700 5.5pt Literata; color: #1F3A33; white-space: nowrap; }
+  .LB .ttl { font: 500 5.5pt Inter; color: #5c625e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .LB .no { font: 700 7.5pt 'JetBrains Mono'; text-align: center; }
+
+  /* =========== Label C — Punggung vertikal =========== */
+  .LC { width: 100%; height: 100%; display: flex; flex-direction: column; background: #fff; color: #1E2420; border-radius: 1.5mm; overflow: hidden; }
+  .LC .cap { margin: 0; height: 9mm; color: #fff; display: flex; align-items: center; justify-content: center; font: 800 12pt Literata; }
+  .LC .lines { text-align: center; font: 800 11pt/1.2 Literata; padding: 1.5mm 0; border-bottom: .3mm solid #1E2420; }
+  .LC .lines .l3 { font-weight: 600; }
+  .LC .vbc { flex: 1; display: flex; align-items: center; justify-content: center; gap: .8mm; position: relative; }
+  .LC .vbc .rot { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(90deg); display: flex; flex-direction: column; align-items: center; }
+  .LC .vno { font: 700 6.5pt 'JetBrains Mono'; }
+
+  @media print {
+    body { background: #fff; }
+    .panel, .main > h2, .main .note, .zoomrow, .proto-bar, .cap-sheet { display: none !important; }
+    .app { display: block; }
+    .main { padding: 0; }
+    .sheets { display: block; }
+    .sheetwrap { box-shadow: none; width: auto !important; height: auto !important; overflow: visible; break-after: page; }
+    .sheet { transform: none !important; }
+    .cell.empty, .cell.used { outline: none; background: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <div><h1>Antrean Cetak</h1><div class="sub">Pilih Eksemplar, atur Template Label, lalu cetak.</div></div>
+    <div><h3>Kertas</h3><div class="seg" id="paper"></div></div>
+    <div><h3>Template Label (mm)</h3>
+      <div class="fields" id="fields"></div>
+    </div>
+    <div><h3>Mulai dari posisi ke-</h3>
+      <div class="fields"><label>Posisi (1 = kiri atas)<input id="start" type="number" min="1" value="1"></label>
+        <label>&nbsp;<button class="ghostbtn" id="test">Halaman uji: mati</button></label></div>
+    </div>
+    <div><h3 id="qh">Eksemplar</h3><div class="queue" id="queue"></div></div>
+    <button class="print" onclick="print()">Cetak</button>
+    <div class="state" id="state"></div>
+  </aside>
+  <main class="main">
+    <h2 id="vtitle"></h2>
+    <p class="note" id="vnote"></p>
+    <div class="zoomrow" id="zoom"></div>
+    <div class="sheets" id="sheets"></div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <button id="prev" title="Desain sebelumnya (←)">‹</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="Desain berikutnya (→)">›</button>
+</div>
+
+<script>
+/* ---------- data palsu ---------- */
+const KAT = {
+  FIK: { name: 'Fiksi', c: '#E76F51' },
+  PSI: { name: 'Psikologi', c: '#B8860B' },
+  SEJ: { name: 'Sejarah', c: '#2A7F78' },
+  FIL: { name: 'Filsafat', c: '#264653' },
+  AGM: { name: 'Agama', c: '#5E7C4B' },
+  ANK: { name: 'Anak', c: '#8E5BA8' },
+};
+const Q = [
+  ['Laut Bercerita', 'FIK', 'CHU', 'l', 'FIK-014/2026'],
+  ['Atomic Habits', 'PSI', 'CLE', 'a', 'PSI-003/2026'],
+  ['Bumi Manusia', 'FIK', 'TOE', 'b', 'FIK-015/2026'],
+  ['Filosofi Teras', 'FIL', 'MAN', 'f', 'FIL-002/2026'],
+  ['Sapiens: Riwayat Singkat Umat Manusia', 'SEJ', 'HAR', 's', 'SEJ-007/2026'],
+  ['Cantik Itu Luka', 'FIK', 'KUR', 'c', 'FIK-016/2026'],
+  ['Sirah Nabawiyah', 'AGM', 'MUB', 's', 'AGM-004/2026'],
+  ['Ronggeng Dukuh Paruk', 'FIK', 'TOH', 'r', 'FIK-017/2026'],
+  ['Si Kancil dan Buaya', 'ANK', 'KAN', 's', 'ANK-001/2026'],
+  ['Laut Bercerita', 'FIK', 'CHU', 'l', 'FIK-018/2026'],
+  ['Man\'s Search for Meaning', 'PSI', 'FRA', 'm', 'PSI-004/2026'],
+  ['Sejarah Indonesia Modern', 'SEJ', 'RIC', 's', 'SEJ-008/2026'],
+].map(([t, k, a, l, no]) => ({ t, k, a, l, no, on: true }));
+
+const PAPERS = { A4: [210, 297], F4: [215, 330] };
+
+/* ---------- tiga desain Label ---------- */
+const V = {
+  A: { name: 'Gabungan · satu stiker lebar',
+    note: 'Satu stiker berisi Nomor Panggil (blok warna Kategori) dan barcode Nomor Induk. Ditempel melintang di punggung buku tebal, atau di sampul belakang kalau bukunya tipis. Paling simpel: satu Eksemplar = satu stiker. Kekurangannya, buku tipis (< 2 cm) tidak muat di punggung.',
+    tpl: { w: 64, h: 34, mt: 12.5, ml: 6, gx: 2, gy: 0 },
+    html: (e) => `<div class="LA"><div class="call" style="background:${KAT[e.k].c}"><div>${e.k}</div><div>${e.a}</div><div class="l3">${e.l}</div></div>
+      <div class="right"><div class="brand">lifelibrary</div><div class="ttl">${e.t}</div><svg class="bc" data-v="${e.no}" data-w="34" data-h="10"></svg><div class="no">${e.no}</div></div></div>` },
+  B: { name: 'Pasangan · punggung + barcode',
+    note: 'Satu sel dibagi garis gunting jadi dua stiker. Bagian kiri (Nomor Panggil, pita warna Kategori) ditempel di punggung, 2 cm dari bawah, seperti di perpustakaan. Bagian kanan (barcode Nomor Induk) ditempel di sampul belakang atau halaman dalam, untuk di-scan saat Peminjaman. Muat untuk buku tipis, tapi perlu menggunting.',
+    tpl: { w: 66, h: 26, mt: 5.5, ml: 6, gx: 0, gy: 0 },
+    html: (e) => `<div class="LB"><div class="spine"><div class="band" style="background:${KAT[e.k].c}">${KAT[e.k].name.toUpperCase()}</div>
+      <div class="stack"><div>${e.k}</div><div>${e.a}</div><div class="l3">${e.l}</div></div></div>
+      <div class="bcpart"><div class="top"><span class="brand">lifelibrary</span><span class="ttl">${e.t}</span></div><svg class="bc" data-v="${e.no}" data-w="42" data-h="10"></svg><div class="no">${e.no}</div></div></div>` },
+  C: { name: 'Punggung vertikal · semua di punggung',
+    note: 'Stiker tinggi dan ramping yang seluruhnya menempel di punggung: kepala berwarna Kategori, Nomor Panggil, lalu barcode Nomor Induk yang berjalan vertikal. Rak terlihat seragam dan barcode bisa di-scan tanpa mengeluarkan buku dari rak. Hanya muat untuk buku dengan punggung ≥ 2,2 cm dan tinggi ≥ 15 cm.',
+    tpl: { w: 22, h: 70, mt: 8.5, ml: 2, gx: 1, gy: 0 },
+    html: (e) => `<div class="LC"><div class="cap" style="background:${KAT[e.k].c}">${e.k}</div><div class="lines"><div>${e.a}</div><div class="l3">${e.l}</div></div>
+      <div class="vbc"><div class="rot"><svg class="bc" data-v="${e.no}" data-w="44" data-h="9"></svg><div class="vno">${e.no}</div></div></div></div>` },
+};
+
+/* ---------- state ---------- */
+const params = new URLSearchParams(location.search);
+let cur = V[params.get('variant')] ? params.get('variant') : 'A';
+let paper = params.get('paper') === 'F4' ? 'F4' : 'A4';
+let tpl = { ...V[cur].tpl };
+let start = 1, test = false;
+
+function layout() {
+  const [PW, PH] = PAPERS[paper];
+  const cols = Math.max(1, Math.floor((PW - 2 * tpl.ml + tpl.gx) / (tpl.w + tpl.gx)));
+  const rows = Math.max(1, Math.floor((PH - 2 * tpl.mt + tpl.gy) / (tpl.h + tpl.gy)));
+  return { PW, PH, cols, rows, per: cols * rows };
+}
+
+function drawBarcodes(root) {
+  root.querySelectorAll('svg.bc').forEach((s) => {
+    JsBarcode(s, s.dataset.v, { format: 'CODE128', displayValue: false, margin: 0, height: 40, width: 2 });
+    s.setAttribute('preserveAspectRatio', 'none');
+    s.style.width = s.dataset.w + 'mm'; s.style.height = s.dataset.h + 'mm';
+    s.removeAttribute('width'); s.removeAttribute('height');
+  });
+}
+
+function render() {
+  const v = V[cur];
+  const L = layout();
+  const items = Q.filter((e) => e.on);
+  const s0 = Math.min(Math.max(1, start), L.per) - 1;
+  const total = s0 + items.length;
+  const nSheets = Math.max(1, Math.ceil(total / L.per));
+  document.getElementById('pagestyle').textContent = `@page { size: ${L.PW}mm ${L.PH}mm; margin: 0; }`;
+
+  // panel
+  document.getElementById('paper').innerHTML = Object.keys(PAPERS).map((p) => `<button class="${p === paper ? 'on' : ''}" data-p="${p}">${p} · ${PAPERS[p].join('×')}</button>`).join('');
+  document.querySelectorAll('#paper button').forEach((b) => b.onclick = () => { paper = b.dataset.p; render(); });
+  const F = [['w', 'Lebar Label'], ['h', 'Tinggi Label'], ['mt', 'Margin atas'], ['ml', 'Margin kiri'], ['gx', 'Jarak kolom'], ['gy', 'Jarak baris']];
+  const fe = document.getElementById('fields');
+  if (fe.dataset.v !== cur) {
+    fe.innerHTML = F.map(([k, l]) => `<label>${l}<input type="number" step="0.5" data-k="${k}" value="${tpl[k]}"></label>`).join('');
+    fe.querySelectorAll('input').forEach((i) => i.oninput = () => { tpl[i.dataset.k] = parseFloat(i.value) || 0; render(); });
+    fe.dataset.v = cur;
+  }
+  document.getElementById('qh').textContent = `Eksemplar di Antrean Cetak (${items.length}/${Q.length})`;
+  const qe = document.getElementById('queue');
+  if (!qe.dataset.done) {
+    qe.innerHTML = Q.map((e, i) => `<label><input type="checkbox" data-i="${i}" checked><span class="dot" style="background:${KAT[e.k].c}"></span>${e.t.length > 22 ? e.t.slice(0, 22) + '…' : e.t}<span class="no">${e.no}</span></label>`).join('');
+    qe.querySelectorAll('input').forEach((c) => c.onchange = () => { Q[c.dataset.i].on = c.checked; render(); });
+    qe.dataset.done = 1;
+  }
+  document.getElementById('test').textContent = `Halaman uji: ${test ? 'nyala' : 'mati'}`;
+  document.getElementById('state').textContent =
+`variant   ${cur}
+kertas    ${paper} ${L.PW}×${L.PH} mm
+label     ${tpl.w}×${tpl.h} mm
+grid      ${L.cols} kolom × ${L.rows} baris = ${L.per}/lembar
+margin    atas ${tpl.mt} · kiri ${tpl.ml}
+sisa      kanan ${(L.PW - tpl.ml - L.cols * tpl.w - (L.cols - 1) * tpl.gx).toFixed(1)} · bawah ${(L.PH - tpl.mt - L.rows * tpl.h - (L.rows - 1) * tpl.gy).toFixed(1)} mm
+mulai     posisi ${s0 + 1} (${s0} dilewati)
+cetak     ${items.length} label → ${nSheets} lembar
+kosong    ${nSheets * L.per - total} sel tersisa`;
+
+  // judul & zoom
+  document.getElementById('vtitle').textContent = `${cur} — ${v.name}`;
+  document.getElementById('vnote').textContent = v.note;
+  const z = tpl.w > 40 ? 2 : 3;
+  document.getElementById('zoom').innerHTML = items.slice(0, tpl.w > 40 ? 2 : 3).map((e) =>
+    `<div><div class="zoomwrap" style="width:${tpl.w * z}mm;height:${tpl.h * z}mm"><div class="zoom" style="width:${tpl.w}mm;height:${tpl.h}mm;transform:scale(${z});box-shadow:0 1px 2px rgba(0,0,0,.2)">${v.html(e)}</div></div>
+     <div class="cap">Diperbesar ${z}× · ukuran asli ${tpl.w}×${tpl.h} mm</div></div>`).join('');
+
+  // lembar
+  const scale = 0.62;
+  let out = '';
+  for (let s = 0; s < nSheets; s++) {
+    let cells = '';
+    for (let i = 0; i < L.per; i++) {
+      const g = s * L.per + i, r = Math.floor(i / L.cols), c = i % L.cols;
+      const pos = `left:${tpl.ml + c * (tpl.w + tpl.gx)}mm;top:${tpl.mt + r * (tpl.h + tpl.gy)}mm;width:${tpl.w}mm;height:${tpl.h}mm`;
+      if (g < s0) cells += `<div class="cell used" style="${pos}"></div>`;
+      else if (g < total) cells += `<div class="cell" style="${pos}">${v.html(items[g - s0])}</div>`;
+      else cells += `<div class="cell empty" style="${pos}"></div>`;
+    }
+    out += `<div><div class="sheetwrap" style="width:${L.PW * scale}mm;height:${L.PH * scale}mm"><div class="sheet ${test ? 'testmode' : ''}" style="width:${L.PW}mm;height:${L.PH}mm;transform:scale(${scale})">${cells}</div></div>
+      <div class="cap cap-sheet">Lembar ${s + 1} dari ${nSheets} · ${paper} (pratinjau ${Math.round(scale * 100)}%)</div></div>`;
+  }
+  document.getElementById('sheets').innerHTML = out;
+  document.getElementById('lbl').textContent = `${cur} (${v.name})`;
+  drawBarcodes(document.body);
+  const p = new URLSearchParams(location.search); p.set('variant', cur); p.set('paper', paper);
+  history.replaceState(null, '', `?${p}`);
+}
+
+document.getElementById('start').oninput = (e) => { start = parseInt(e.target.value) || 1; render(); };
+document.getElementById('test').onclick = () => { test = !test; render(); };
+const keys = Object.keys(V);
+const step = (d) => { cur = keys[(keys.indexOf(cur) + d + keys.length) % keys.length]; tpl = { ...V[cur].tpl }; render(); };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') step(-1);
+  if (e.key === 'ArrowRight') step(1);
+});
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,445 @@
+<!doctype html>
+<!--
+  PROTOTYPE — THROWAWAY. Jangan dipakai sebagai kode produksi.
+  Pertanyaan: gaya visual & struktur layar mana yang paling cocok untuk lifelibrary?
+  Tiga variant (A/B/C) dari 3 layar inti (Beranda, Sesi Penerimaan, Detail Buku),
+  dipilih lewat ?variant=A|B|C, bar mengambang di bawah, atau tombol panah ← →.
+  Data palsu di memori, tanpa persistensi. Sampul = blok warna buatan, bukan sampul asli.
+-->
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE · lifelibrary · gaya visual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: #d9d5cc; color: #222; padding: 24px 24px 120px; }
+  .stage-title { font: 600 14px/1.4 Inter; color: #555; margin-bottom: 16px; }
+  .stage-title b { color: #222; }
+  .screens { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; }
+  .screen-label { font: 500 12px Inter; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .08em; }
+  .phone { width: 390px; height: 800px; border-radius: 36px; overflow: hidden; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,.18), 0 0 0 10px #1b1b1b; display: flex; flex-direction: column; }
+  .phone .scroll { flex: 1; overflow-y: auto; }
+  i[data-lucide], svg.lucide { width: 20px; height: 20px; stroke-width: 1.9; flex: none; }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  /* ---------- switcher (bukan bagian desain) ---------- */
+  .proto-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 99; display: flex; align-items: center; gap: 6px; background: #111; color: #fff; padding: 6px; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,.35); font: 500 13px Inter; }
+  .proto-bar button { background: #2a2a2a; color: #fff; border: 0; height: 36px; min-width: 36px; padding: 0 12px; border-radius: 999px; cursor: pointer; font: inherit; display: flex; align-items: center; gap: 6px; }
+  .proto-bar button:hover { background: #3a3a3a; }
+  .proto-bar .lbl { padding: 0 12px; min-width: 210px; text-align: center; }
+  .proto-bar .on { background: #c2410c; }
+
+  /* =========================================================
+     VARIANT A — Kertas & Tinta (sesuai docs/research/ui-ux.md)
+     kartu daftar + bottom nav 5 tab
+     ========================================================= */
+  .vA { background: #FAF6EE; color: #2B2620; font-family: Inter; }
+  .vA .serif { font-family: Fraunces, serif; }
+  .vA .mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+  .vA .top { display: flex; align-items: center; justify-content: space-between; padding: 16px; }
+  .vA .wordmark { font: 600 20px Fraunces; }
+  .vA .offline { display: flex; gap: 8px; align-items: center; background: #EDE3CF; color: #3D3528; font-size: 13px; padding: 8px 16px; }
+  .vA .pad { padding: 0 16px; }
+  .vA h1 { font: 600 28px/1.2 Fraunces; margin-top: 8px; }
+  .vA .muted { color: #6B6257; font-size: 14px; }
+  .vA .group { background: #FFFDF8; border: 1px solid #E6DFD2; border-radius: 12px; margin-top: 20px; }
+  .vA .row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 52px; font-size: 15px; }
+  .vA .row + .row { border-top: 1px solid #E6DFD2; }
+  .vA .row .grow { flex: 1; }
+  .vA .danger { color: #A63D2F; } .vA .success { color: #3C6E47; }
+  .vA .btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 52px; border-radius: 10px; background: #2F5D50; color: #fff; font: 600 16px Inter; margin-top: 20px; }
+  .vA .btn.ghost { background: transparent; color: #2F5D50; border: 1px solid #8C8273; height: 44px; font-size: 15px; }
+  .vA h2 { font: 600 18px Fraunces; margin: 28px 0 12px; }
+  .vA .covers { display: flex; gap: 10px; overflow: hidden; }
+  .vA .cover { width: 64px; height: 96px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.18); flex: none; position: relative; color: #fff; font: 600 9px/1.2 Fraunces; padding: 6px; }
+  .vA .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 999px; }
+  .vA .chip svg { width: 14px; height: 14px; }
+  .vA .chip.wait { background: #ECE7F5; color: #5B4A86; }
+  .vA .chip.cat { background: #F6E3D9; color: #A8502B; }
+  .vA .chip.ok { background: #E3EEE5; color: #3C6E47; }
+  .vA .chip.late { background: #F7E1DD; color: #A63D2F; }
+  .vA .cover .chip { position: absolute; bottom: 4px; left: 4px; padding: 2px 4px; }
+  .vA .nav { display: flex; justify-content: space-around; align-items: flex-end; border-top: 1px solid #E6DFD2; background: #FFFDF8; padding: 6px 4px 18px; }
+  .vA .nav a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: #6B6257; width: 64px; position: relative; }
+  .vA .nav a.act { color: #2F5D50; font-weight: 600; }
+  .vA .nav a.mid .ic { background: #2F5D50; color: #fff; border-radius: 14px; padding: 10px; margin-top: -18px; box-shadow: 0 4px 10px rgba(47,93,80,.35); }
+  .vA .nav .badge { position: absolute; top: -2px; right: 14px; background: #A63D2F; color: #fff; font-size: 10px; border-radius: 999px; padding: 0 5px; }
+  .vA .cam { background: #1f1c18; height: 300px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #EDE6D9; font-size: 13px; }
+  .vA .frame { width: 260px; height: 110px; border: 3px solid #8FC1AE; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .vA .bars { width: 200px; height: 60px; background: repeating-linear-gradient(90deg, #ddd 0 2px, transparent 2px 5px, #ddd 5px 6px, transparent 6px 9px); opacity: .55; }
+  .vA .torch { position: absolute; right: 14px; bottom: 14px; background: rgba(255,255,255,.12); border-radius: 999px; padding: 10px; }
+  .vA .input { display: flex; gap: 8px; padding: 12px 16px 4px; }
+  .vA .input .field { flex: 1; height: 48px; border: 1px solid #8C8273; border-radius: 8px; background: #FFFDF8; display: flex; align-items: center; padding: 0 12px; color: #6B6257; font-size: 16px; }
+  .vA .input .go { width: 48px; height: 48px; border-radius: 8px; background: #2F5D50; color: #fff; display: flex; align-items: center; justify-content: center; }
+  .vA .link { color: #2F5D50; font-size: 14px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+  .vA .sheet { background: #FFFDF8; border-top-left-radius: 16px; border-top-right-radius: 16px; box-shadow: 0 -4px 20px rgba(0,0,0,.08); margin-top: 14px; flex: 1; }
+  .vA .grab { width: 40px; height: 4px; background: #E6DFD2; border-radius: 4px; margin: 10px auto; }
+  .vA .sess { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6B6257; padding: 0 16px 12px; border-bottom: 1px solid #E6DFD2; }
+  .vA .hero { display: flex; gap: 16px; padding: 8px 16px 20px; border-bottom: 1px solid #E6DFD2; }
+  .vA .hero .cover { width: 96px; height: 144px; font-size: 12px; padding: 8px; }
+  .vA .skel { height: 10px; border-radius: 4px; background: #E6DFD2; width: 140px; }
+
+  /* =========================================================
+     VARIANT B — Rak Sampul
+     visual dulu: rak punggung buku, grid sampul, FAB scan mengambang,
+     kamera layar penuh, hero sampul besar
+     ========================================================= */
+  .vB { background: #F3EEE4; color: #1E2420; font-family: Inter; }
+  .vB .lit { font-family: Literata, serif; }
+  .vB .head { background: #1F3A33; color: #F3EEE4; padding: 18px 20px 26px; }
+  .vB .head .topline { display: flex; justify-content: space-between; align-items: center; font-size: 13px; opacity: .85; }
+  .vB .head h1 { font: 700 34px/1.1 Literata; margin-top: 16px; }
+  .vB .head p { font-size: 14px; opacity: .8; margin-top: 6px; }
+  .vB .offline { background: #E9C46A; color: #3a2c00; font-size: 12px; font-weight: 600; padding: 6px 20px; display: flex; gap: 6px; align-items: center; }
+  .vB .shelf { background: #1F3A33; padding: 0 20px; }
+  .vB .spines { display: flex; align-items: flex-end; gap: 3px; height: 150px; }
+  .vB .spine { width: 30px; border-radius: 3px 3px 0 0; color: #fff; writing-mode: vertical-rl; transform: rotate(180deg); font: 600 11px Literata; padding: 8px 0; display: flex; align-items: center; justify-content: flex-start; white-space: nowrap; overflow: hidden; box-shadow: inset -3px 0 0 rgba(0,0,0,.15); position: relative; }
+  .vB .spine.wait::after { content: ''; position: absolute; left: 50%; bottom: 6px; width: 8px; height: 8px; margin-left: -4px; background: #C9B8F0; border-radius: 50%; }
+  .vB .ledge { height: 14px; background: linear-gradient(#8B5E3C, #6E4529); margin: 0 -20px; box-shadow: 0 6px 12px rgba(0,0,0,.25); }
+  .vB .pills { display: flex; gap: 8px; padding: 18px 20px 4px; overflow: hidden; }
+  .vB .pill { display: flex; align-items: center; gap: 6px; white-space: nowrap; background: #fff; border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .vB .pill.red { color: #B23A2B; } .vB .pill.violet { color: #5B4A86; }
+  .vB h2 { font: 600 20px Literata; padding: 20px 20px 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  .vB h2 small { font: 500 13px Inter; color: #2F5D50; }
+  .vB .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 0 20px 110px; }
+  .vB .gcov { aspect-ratio: 2/3; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,.18); color: #fff; padding: 8px; font: 600 12px/1.2 Literata; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
+  .vB .gcov small { font: 400 9px Inter; opacity: .85; }
+  .vB .gcov .dot { position: absolute; top: 6px; right: 6px; background: #ECE7F5; color: #5B4A86; border-radius: 999px; padding: 2px; }
+  .vB .gcov .dot svg { width: 12px; height: 12px; }
+  .vB .gtitle { font-size: 12px; margin-top: 6px; color: #1E2420; font-weight: 500; }
+  .vB .fnav { position: absolute; left: 20px; right: 20px; bottom: 20px; height: 64px; border-radius: 22px; background: #1E2420; color: #A9B3AE; display: flex; align-items: center; justify-content: space-around; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .vB .fnav .act { color: #F3EEE4; }
+  .vB .fnav .fab { width: 64px; height: 64px; border-radius: 50%; background: #E76F51; color: #fff; display: flex; align-items: center; justify-content: center; margin-top: -30px; box-shadow: 0 8px 20px rgba(231,111,81,.5); border: 4px solid #F3EEE4; }
+  .vB .fnav .fab svg { width: 26px; height: 26px; }
+  .vB .fullcam { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 35%, #3b3a36, #121110); color: #fff; }
+  .vB .camtop { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; font-size: 14px; }
+  .vB .camtop .glass { background: rgba(255,255,255,.14); backdrop-filter: blur(8px); border-radius: 999px; padding: 8px 14px; display: flex; align-items: center; gap: 6px; }
+  .vB .reticle { position: absolute; top: 170px; left: 50%; transform: translateX(-50%); width: 290px; height: 120px; }
+  .vB .reticle span { position: absolute; width: 34px; height: 34px; border: 4px solid #E76F51; }
+  .vB .reticle .a { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
+  .vB .reticle .b { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
+  .vB .reticle .c { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
+  .vB .reticle .d { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
+  .vB .reticle .laser { position: absolute; left: 10px; right: 10px; top: 58px; height: 2px; background: #E76F51; box-shadow: 0 0 12px #E76F51; }
+  .vB .hint { position: absolute; top: 310px; width: 100%; text-align: center; font-size: 14px; opacity: .85; }
+  .vB .stack { position: absolute; left: 14px; right: 14px; bottom: 110px; display: flex; flex-direction: column; gap: 8px; }
+  .vB .toast { background: rgba(255,255,255,.96); color: #1E2420; border-radius: 16px; padding: 10px; display: flex; gap: 12px; align-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .vB .toast .mini { width: 34px; height: 50px; border-radius: 4px; flex: none; }
+  .vB .toast .t { font: 600 14px Literata; } .vB .toast .s { font-size: 12px; color: #5c625e; }
+  .vB .toast .grow { flex: 1; }
+  .vB .camdock { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 20px 26px; display: flex; gap: 10px; align-items: center; }
+  .vB .camdock .field { flex: 1; height: 50px; border-radius: 16px; background: rgba(255,255,255,.14); backdrop-filter: blur(8px); display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 15px; color: #ddd; }
+  .vB .camdock .round { width: 50px; height: 50px; border-radius: 16px; background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; }
+  .vB .dhero { height: 330px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 18px; color: #fff; }
+  .vB .dhero .bg { position: absolute; inset: 0; filter: saturate(.9); }
+  .vB .dhero .bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,.05), rgba(0,0,0,.45)); }
+  .vB .dhero .navrow { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 2; }
+  .vB .dhero .navrow span { background: rgba(0,0,0,.25); border-radius: 999px; padding: 8px; display: flex; }
+  .vB .dhero .big { width: 130px; height: 195px; border-radius: 6px; z-index: 1; box-shadow: 0 14px 30px rgba(0,0,0,.45); padding: 12px; font: 700 16px/1.2 Literata; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); }
+  .vB .dtitle { text-align: center; padding: 18px 20px 4px; }
+  .vB .dtitle h1 { font: 700 26px Literata; }
+  .vB .dtitle p { color: #5c625e; font-size: 14px; margin-top: 4px; }
+  .vB .tags { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+  .vB .tag { background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 500; }
+  .vB .tag.np { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .vB .tickets { display: flex; gap: 12px; padding: 4px 20px 20px; overflow: hidden; }
+  .vB .ticket { min-width: 200px; background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .vB .ticket .no { font: 600 15px 'JetBrains Mono', monospace; }
+  .vB .ticket .st { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 8px; margin-top: 10px; }
+  .vB .ticket .st svg { width: 14px; height: 14px; }
+  .vB .ticket .loc { font-size: 13px; color: #5c625e; margin-top: 6px; }
+  .vB .cta { margin: 0 20px; height: 52px; border-radius: 16px; background: #1F3A33; color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; }
+
+  /* =========================================================
+     VARIANT C — Kartu Katalog
+     tipografis & padat: tab atas, tanpa bottom nav, ledger bergaris,
+     detail buku = kartu katalog perpustakaan sungguhan
+     ========================================================= */
+  .vC { background: #ECE6D8; color: #232019; font-family: 'Source Serif 4', serif; }
+  .vC .m { font-family: 'IBM Plex Mono', monospace; }
+  .vC .masthead { padding: 18px 18px 0; display: flex; justify-content: space-between; align-items: center; }
+  .vC .masthead .wm { font: 600 13px 'IBM Plex Mono'; letter-spacing: .14em; }
+  .vC .scanbtn { font: 600 13px 'IBM Plex Mono'; border: 2px solid #232019; padding: 7px 12px; display: flex; gap: 6px; align-items: center; background: #F8F4EA; box-shadow: 3px 3px 0 #232019; }
+  .vC .tabs { display: flex; gap: 18px; padding: 16px 18px 0; border-bottom: 2px solid #232019; font: 500 13px 'IBM Plex Mono'; text-transform: uppercase; letter-spacing: .06em; }
+  .vC .tabs span { padding-bottom: 8px; color: #6a6355; position: relative; }
+  .vC .tabs span.act { color: #232019; border-bottom: 4px solid #B5322A; margin-bottom: -2px; }
+  .vC .tabs .n { background: #B5322A; color: #fff; font-size: 10px; padding: 0 4px; margin-left: 4px; }
+  .vC .offline { font: 500 12px 'IBM Plex Mono'; background: repeating-linear-gradient(45deg, #E3D8BF 0 8px, #DDD0B2 8px 16px); padding: 7px 18px; display: flex; gap: 8px; align-items: center; border-bottom: 1px solid #b9ac8e; }
+  .vC .card { background: #FBF8F0; margin: 18px; border: 1px solid #c9bea5; box-shadow: 0 2px 0 #c9bea5, 0 6px 16px rgba(0,0,0,.08); position: relative;
+    background-image: linear-gradient(#FBF8F0 34px, transparent 34px), repeating-linear-gradient(#FBF8F0 0 25px, #cfe0ee 25px 26px); }
+  .vC .card::before { content: ''; position: absolute; left: 0; right: 0; top: 34px; height: 2px; background: #d98c86; }
+  .vC .card .ch { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font: 600 12px 'IBM Plex Mono'; letter-spacing: .1em; text-transform: uppercase; }
+  .vC .card .cb { padding: 4px 14px 14px; line-height: 26px; font-size: 16px; }
+  .vC .stats { display: grid; grid-template-columns: repeat(3, 1fr); text-align: left; }
+  .vC .stats b { display: block; font: 600 30px/52px 'IBM Plex Mono'; }
+  .vC .stats span { font: 400 12px/26px 'IBM Plex Mono'; color: #6a6355; text-transform: uppercase; }
+  .vC .todo { display: flex; justify-content: space-between; align-items: center; height: 26px; }
+  .vC .todo .m { font-size: 13px; }
+  .vC .red { color: #B5322A; } .vC .violet { color: #5B4A86; }
+  .vC .sect { font: 600 12px 'IBM Plex Mono'; letter-spacing: .12em; text-transform: uppercase; padding: 4px 18px 8px; display: flex; justify-content: space-between; color: #6a6355; }
+  .vC .ledger { margin: 0 18px; border-top: 2px solid #232019; }
+  .vC .lrow { display: grid; grid-template-columns: 112px 1fr auto; gap: 10px; padding: 10px 0; border-bottom: 1px solid #c9bea5; align-items: baseline; }
+  .vC .lrow .no { font: 500 12px 'IBM Plex Mono'; }
+  .vC .lrow .ti { font-size: 16px; font-weight: 600; line-height: 1.25; }
+  .vC .lrow .au { font-size: 13px; color: #6a6355; font-style: italic; }
+  .vC .lrow .st { font: 500 11px 'IBM Plex Mono'; text-transform: uppercase; }
+  .vC .camslot { margin: 14px 18px 0; height: 190px; background: #232019; color: #ECE6D8; position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; font: 500 12px 'IBM Plex Mono'; }
+  .vC .camslot .fr { width: 240px; height: 86px; border: 2px dashed #ECE6D8; display: flex; align-items: center; justify-content: center; }
+  .vC .camslot .fr i, .vC .camslot .fr svg { width: 40px; height: 40px; opacity: .6; }
+  .vC .sessmeta { margin: 12px 18px 0; display: flex; justify-content: space-between; font: 500 12px 'IBM Plex Mono'; text-transform: uppercase; }
+  .vC .isbnin { margin: 10px 18px 14px; display: flex; border: 2px solid #232019; background: #FBF8F0; height: 48px; }
+  .vC .isbnin span { flex: 1; display: flex; align-items: center; padding: 0 12px; font: 400 15px 'IBM Plex Mono'; color: #6a6355; }
+  .vC .isbnin b { background: #232019; color: #FBF8F0; display: flex; align-items: center; padding: 0 14px; font: 600 13px 'IBM Plex Mono'; }
+  .vC .catcard { margin: 18px; background: #FBF8F0; border: 1px solid #c9bea5; box-shadow: 0 2px 0 #c9bea5, 0 8px 18px rgba(0,0,0,.1); padding: 18px 18px 34px; position: relative; font-size: 15px; line-height: 1.5; }
+  .vC .catcard .hole { position: absolute; bottom: 10px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #ECE6D8; box-shadow: inset 0 1px 2px rgba(0,0,0,.25); }
+  .vC .catcard .grid { display: grid; grid-template-columns: 64px 1fr; gap: 12px; }
+  .vC .catcard .call { font: 600 14px/1.5 'IBM Plex Mono'; }
+  .vC .catcard .ind { padding-left: 18px; }
+  .vC .stamp { position: absolute; right: 16px; top: 54px; transform: rotate(-9deg); border: 3px solid #B5322A; color: #B5322A; font: 600 13px 'IBM Plex Mono'; padding: 2px 8px; letter-spacing: .1em; opacity: .85; }
+  .vC .acts { display: flex; gap: 10px; margin: 0 18px 18px; }
+  .vC .acts span { flex: 1; text-align: center; border: 2px solid #232019; padding: 10px 0; font: 600 12px 'IBM Plex Mono'; text-transform: uppercase; background: #FBF8F0; }
+  .vC .acts span.pri { background: #232019; color: #FBF8F0; }
+  .vC .back { display: flex; align-items: center; gap: 6px; font: 500 13px 'IBM Plex Mono'; padding: 18px 18px 0; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="stage-title" id="stageTitle"></div>
+<div class="screens" id="screens"></div>
+
+<div class="proto-bar">
+  <button id="prev" title="Variant sebelumnya (←)"><i data-lucide="chevron-left"></i></button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="Variant berikutnya (→)"><i data-lucide="chevron-right"></i></button>
+  <button id="off" title="Tampilkan keadaan offline"><i data-lucide="cloud-off"></i><span>Offline</span></button>
+</div>
+
+<script>
+/* ---------- data palsu (dipakai bersama; layout TIDAK dibagi) ---------- */
+const books = [
+  { t: 'Laut Bercerita', a: 'Leila S. Chudori', p: 'KPG', y: 2017, cat: 'FIK', c: '#2F4858' },
+  { t: 'Atomic Habits', a: 'James Clear', p: 'Gramedia', y: 2019, cat: 'PSI', c: '#B8860B' },
+  { t: 'Bumi Manusia', a: 'Pramoedya A. Toer', p: 'Lentera Dipantara', y: 2005, cat: 'FIK', c: '#8C3B2E' },
+  { t: 'Filosofi Teras', a: 'Henry Manampiring', p: 'Kompas', y: 2018, cat: 'FIL', c: '#5E7C6B' },
+  { t: 'Sapiens', a: 'Yuval Noah Harari', p: 'KPG', y: 2017, cat: 'SEJ', c: '#7A6A4F' },
+  { t: 'Negeri 5 Menara', a: 'Ahmad Fuadi', p: 'Gramedia', y: 2009, cat: 'FIK', c: '#3E6C8F', wait: true },
+  { t: 'Cantik Itu Luka', a: 'Eka Kurniawan', p: 'Gramedia', y: 2015, cat: 'FIK', c: '#6B2D5C' },
+  { t: 'Sejarah Dunia yang Disembunyikan', a: 'Jonathan Black', p: 'Alvabet', y: 2015, cat: 'SEJ', c: '#2E3B2F' },
+  { t: 'Ronggeng Dukuh Paruk', a: 'Ahmad Tohari', p: 'Gramedia', y: 2011, cat: 'FIK', c: '#A0522D' },
+];
+const copies = [
+  { no: 'FIK-001/2026', loc: 'Rak A, susun 2', st: 'ok' },
+  { no: 'FIK-002/2026', loc: 'Rak A, susun 2', st: 'loan', who: 'Rina', due: '12 Des' },
+  { no: null, loc: 'Rak B, susun 1', st: 'wait' },
+];
+let offline = false;
+
+const ic = (n) => `<i data-lucide="${n}"></i>`;
+
+/* =================== VARIANT A =================== */
+const A = {
+  name: 'Kertas & Tinta',
+  beranda() { return `
+    <div class="top"><span class="wordmark">lifelibrary</span>${ic('settings')}</div>
+    ${offline ? `<div class="offline">${ic('cloud-off')} Offline · perubahan disimpan di perangkat ini</div>` : ''}
+    <div class="scroll"><div class="pad">
+      <h1>Selamat sore</h1>
+      <p class="muted">412 buku · 437 eksemplar · 3 dipinjam</p>
+      <div class="group">
+        <div class="row"><span class="danger">${ic('alarm-clock')}</span><span class="grow">2 pinjaman terlambat</span>${ic('chevron-right')}</div>
+        <div class="row">${ic('tag')}<span class="grow">8 Label siap dicetak</span>${ic('chevron-right')}</div>
+        ${offline ? `<div class="row" style="color:#5B4A86">${ic('clock-arrow-up')}<span class="grow">3 perubahan Menunggu Sinkron</span>${ic('chevron-right')}</div>` : ''}
+      </div>
+      <div class="btn">${ic('scan-barcode')} Mulai Sesi Penerimaan</div>
+      <h2>Baru ditambahkan</h2>
+      <div class="covers">${books.slice(0,6).map(b => `<div class="cover" style="background:${b.c}">${b.t}${b.wait ? `<span class="chip wait">${ic('clock-arrow-up')}</span>` : ''}</div>`).join('')}</div>
+      <h2>Sedang dipinjam</h2>
+      <div class="group" style="margin-top:0">
+        <div class="row"><span class="grow">Laut Bercerita<br><span class="muted">Rina · tempo 12 Des</span></span><span class="chip late">Terlambat</span></div>
+        <div class="row"><span class="grow">Filosofi Teras<br><span class="muted">Dimas · tempo 20 Des</span></span></div>
+      </div>
+      <div style="height:24px"></div>
+    </div></div>
+    ${A.nav('Beranda')}`; },
+  nav(act) {
+    const items = [['house','Beranda'],['library','Koleksi'],['scan-barcode','Tambah'],['book-up','Pinjam'],['menu','Lainnya']];
+    return `<div class="nav">${items.map(([i,l]) => `<a class="${l===act?'act':''} ${l==='Tambah'?'mid':''}"><span class="ic">${ic(i)}</span>${l}${l==='Pinjam'?'<span class="badge">2</span>':''}${l==='Lainnya'&&offline?'<span class="badge" style="background:#5B4A86">3</span>':''}</a>`).join('')}</div>`;
+  },
+  scan() { return `
+    <div class="top">${ic('arrow-left')}<span style="font:600 17px Fraunces">Sesi Penerimaan</span><span class="link" style="text-decoration:none">Selesai</span></div>
+    <div class="pad muted" style="margin:-6px 0 12px;display:flex;gap:6px;align-items:center">Hari ini · Beli · Rak A, susun 2 ${ic('pencil')}</div>
+    ${offline ? `<div class="offline">${ic('cloud-off')} Offline · data buku dicari saat tersambung</div>` : ''}
+    <div class="cam"><div class="frame"><div class="bars"></div></div>Arahkan barcode ISBN ke dalam kotak<span class="torch">${ic('flashlight')}</span></div>
+    <div class="input"><div class="field">Ketik atau scan ISBN…</div><div class="go">${ic('corner-down-left')}</div></div>
+    <div class="pad"><span class="link">Tanpa ISBN? Isi manual</span></div>
+    <div class="sheet"><div class="grab"></div>
+      <div class="sess">Sesi ini: 4 buku</div>
+      <div class="row"><span class="success">${ic('circle-check')}</span><span class="grow">Laut Bercerita</span><span class="mono">FIK-014/2026</span></div>
+      <div class="row">${ic('circle-dot')}<span class="grow">Atomic Habits</span><span class="link" style="text-decoration:none">Tinjau ›</span></div>
+      ${offline
+        ? `<div class="row" style="color:#5B4A86">${ic('clock-arrow-up')}<span class="grow mono">978623…</span><span class="chip wait">Menunggu data</span></div>`
+        : `<div class="row">${ic('loader')}<span class="grow"><span class="mono">978602…</span><br><span class="muted">Mencari di Open Library</span></span><span class="skel" style="width:40px"></span></div>`}
+    </div>`; },
+  detail() { const b = books[0]; return `
+    <div class="top">${ic('arrow-left')}<span style="display:flex;gap:18px">${ic('pencil')}${ic('ellipsis')}</span></div>
+    ${offline ? `<div class="offline">${ic('cloud-off')} Offline · perubahan disimpan di perangkat ini</div>` : ''}
+    <div class="scroll">
+      <div class="hero"><div class="cover" style="background:${b.c}">${b.t}</div>
+        <div><h1 style="margin:0;font-size:24px">${b.t}</h1><p class="muted" style="margin-top:6px">${b.a}<br>${b.p} · ${b.y}</p>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;align-items:flex-start"><span class="chip cat">FIK · Fiksi</span><span class="mono">FIK / CHU / l</span></div></div></div>
+      <div class="pad"><h2 style="margin-top:20px">Eksemplar (3)</h2>
+        <div class="group" style="margin-top:0">
+          ${copies.map(c => `<div class="row"><span class="grow"><span class="mono">${c.no ?? '——'}</span> · <span class="muted">${c.loc}</span><br>
+            ${c.st==='ok' ? `<span class="chip ok">${ic('circle-check')} Tersedia</span>` : c.st==='loan' ? `<span class="chip late">${ic('book-up')} Dipinjam ${c.who} · tempo ${c.due}</span>` : `<span class="chip wait">${ic('clock-arrow-up')} Menunggu Sinkron · belum bisa dicetak</span>`}
+          </span>${ic('ellipsis')}</div>`).join('')}
+        </div>
+        <div class="btn ghost">${ic('plus')} Tambah eksemplar</div>
+        <div class="row" style="padding:20px 0;color:#6B6257">${ic('chevron-right')} Detail bibliografis · ISBN, DDC 899.221 3, subjek</div>
+      </div>
+    </div>
+    ${A.nav('Koleksi')}`; },
+};
+
+/* =================== VARIANT B =================== */
+const B = {
+  name: 'Rak Sampul',
+  beranda() { return `
+    <div class="scroll">
+      ${offline ? `<div class="offline">${ic('cloud-off')} Offline — 3 perubahan menunggu dikirim</div>` : ''}
+      <div class="head"><div class="topline"><span>lifelibrary</span><span style="display:flex;gap:16px">${ic('search')}${ic('settings')}</span></div>
+        <h1>Rak kamu</h1><p>412 buku · 3 sedang dipinjam</p></div>
+      <div class="shelf"><div class="spines">
+        ${books.map((b,i) => `<div class="spine ${b.wait?'wait':''}" style="background:${b.c};height:${110+((i*37)%38)}px;width:${24+((i*13)%14)}px">${b.t}</div>`).join('')}
+      </div><div class="ledge"></div></div>
+      <div class="pills">
+        <span class="pill red">${ic('alarm-clock')} 2 terlambat</span>
+        <span class="pill">${ic('tag')} 8 label</span>
+        ${offline ? `<span class="pill violet">${ic('clock-arrow-up')} 3 menunggu</span>` : ''}
+      </div>
+      <h2>Koleksi <small>Lihat semua</small></h2>
+      <div class="grid">${books.map(b => `<div><div class="gcov" style="background:${b.c}">${b.t}<small>${b.a}</small>${b.wait?`<span class="dot">${ic('clock-arrow-up')}</span>`:''}</div></div>`).join('')}</div>
+    </div>
+    ${B.nav()}`; },
+  nav() { return `<div class="fnav"><span class="act">${ic('house')}</span><span>${ic('library')}</span><span class="fab">${ic('scan-barcode')}</span><span>${ic('book-up')}</span><span>${ic('menu')}</span></div>`; },
+  scan() { return `
+    <div class="fullcam">
+      <div class="camtop"><span class="glass">${ic('x')} Selesai</span><span class="glass">Beli · Rak A2 ${ic('chevron-down')}</span><span class="glass">${ic('flashlight')}</span></div>
+      ${offline ? `<div style="margin:0 20px;background:#E9C46A;color:#3a2c00;border-radius:12px;padding:8px 12px;font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center">${ic('cloud-off')} Offline — ISBN disimpan, data dicari nanti</div>` : ''}
+      <div class="reticle"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span><div class="laser"></div></div>
+      <div class="hint">Arahkan barcode ISBN ke dalam kotak</div>
+      <div class="stack">
+        ${offline
+          ? `<div class="toast"><div class="mini" style="background:#ECE7F5"></div><div class="grow"><div class="t">978-623-…</div><div class="s">Menunggu data · dicari saat online</div></div><span style="color:#5B4A86">${ic('clock-arrow-up')}</span></div>`
+          : `<div class="toast"><div class="mini" style="background:#ddd"></div><div class="grow"><div class="t">978-602-…</div><div class="s">Mencari di Open Library…</div></div>${ic('loader')}</div>`}
+        <div class="toast"><div class="mini" style="background:${books[1].c}"></div><div class="grow"><div class="t">Atomic Habits</div><div class="s">Saran Kategori: PSI · ketuk untuk tinjau</div></div>${ic('chevron-right')}</div>
+        <div class="toast" style="opacity:.85"><div class="mini" style="background:${books[0].c}"></div><div class="grow"><div class="t">Laut Bercerita</div><div class="s" style="color:#3C6E47">Tersimpan · FIK-014/2026</div></div><span style="color:#3C6E47">${ic('circle-check')}</span></div>
+      </div>
+      <div class="camdock"><div class="field">${ic('keyboard')} Ketik ISBN…</div><div class="round">${ic('pencil-line')}</div></div>
+    </div>`; },
+  detail() { const b = books[0]; return `
+    <div class="scroll">
+      <div class="dhero"><div class="bg" style="background:${b.c}"></div>
+        <div class="navrow"><span>${ic('arrow-left')}</span><span>${ic('ellipsis')}</span></div>
+        <div class="big" style="background:${b.c}">${b.t}<div style="font:400 11px Inter;margin-top:8px;opacity:.8">${b.a}</div></div>
+      </div>
+      ${offline ? `<div class="offline">${ic('cloud-off')} Offline — perubahan disimpan di perangkat</div>` : ''}
+      <div class="dtitle"><h1>${b.t}</h1><p>${b.a} · ${b.p} · ${b.y}</p>
+        <div class="tags"><span class="tag" style="color:#A8502B">Fiksi</span><span class="tag np">FIK / CHU / l</span></div></div>
+      <h2>Eksemplar <small>3</small></h2>
+      <div class="tickets">${copies.map(c => `<div class="ticket"><div class="no">${c.no ?? '——'}</div><div class="loc">${c.loc}</div>
+        ${c.st==='ok' ? `<span class="st" style="background:#E3EEE5;color:#3C6E47">${ic('circle-check')} Tersedia</span>` : c.st==='loan' ? `<span class="st" style="background:#F7E1DD;color:#A63D2F">${ic('book-up')} ${c.who} · ${c.due}</span>` : `<span class="st" style="background:#ECE7F5;color:#5B4A86">${ic('clock-arrow-up')} Menunggu Sinkron</span>`}
+      </div>`).join('')}</div>
+      <div class="cta">${ic('plus')} Tambah eksemplar</div>
+      <h2>Tentang buku</h2>
+      <p style="padding:0 20px 110px;font-size:14px;color:#5c625e;line-height:1.6">ISBN 978-979-91-0515-8 · DDC 899.221 3 · 379 hlm. · Bahasa Indonesia</p>
+    </div>
+    ${B.nav()}`; },
+};
+
+/* =================== VARIANT C =================== */
+const C = {
+  name: 'Kartu Katalog',
+  tabs(act) { return `<div class="masthead"><span class="wm">LIFELIBRARY</span><span class="scanbtn">${ic('scan-barcode')} SCAN</span></div>
+    <div class="tabs">${['Beranda','Koleksi','Pinjam','Lainnya'].map(t => `<span class="${t===act?'act':''}">${t}${t==='Pinjam'?'<span class="n">2</span>':''}</span>`).join('')}</div>
+    ${offline ? `<div class="offline">${ic('cloud-off')} OFFLINE — TERSIMPAN DI PERANGKAT</div>` : ''}`; },
+  beranda() { return `${C.tabs('Beranda')}
+    <div class="scroll">
+      <div class="card"><div class="ch"><span>Ringkasan</span><span>24 · XI · 2026</span></div>
+        <div class="cb"><div class="stats"><div><b>412</b><span>buku</span></div><div><b>437</b><span>eksemplar</span></div><div><b>3</b><span>dipinjam</span></div></div>
+          <div class="todo red"><span>☐ 2 pinjaman terlambat</span><span class="m">→</span></div>
+          <div class="todo"><span>☐ 8 label siap dicetak</span><span class="m">→</span></div>
+          ${offline ? `<div class="todo violet"><span>☐ 3 perubahan menunggu sinkron</span><span class="m">→</span></div>` : ''}
+        </div></div>
+      <div class="sect"><span>Buku induk · terakhir masuk</span><span>Semua →</span></div>
+      <div class="ledger">${books.slice(0,7).map((b,i) => `<div class="lrow"><span class="no ${b.wait?'violet':''}">${b.wait ? '—— menunggu' : `${b.cat}-0${String(14-i).padStart(2,'0')}/2026`}</span>
+        <span><div class="ti">${b.t}</div><div class="au">${b.a}</div></span><span class="st">${b.cat}</span></div>`).join('')}</div>
+      <div style="height:24px"></div>
+    </div>`; },
+  scan() { return `
+    <div class="back">${ic('arrow-left')} Sesi penerimaan <span style="margin-left:auto;border-bottom:2px solid">SELESAI</span></div>
+    ${offline ? `<div class="offline" style="margin-top:12px">${ic('cloud-off')} OFFLINE — DATA DICARI SAAT TERSAMBUNG</div>` : ''}
+    <div class="camslot"><div class="fr">${ic('scan-line')}</div>arahkan barcode ISBN ke kotak</div>
+    <div class="sessmeta"><span>24.11.2026 · beli · rak A2</span><span>ubah</span></div>
+    <div class="isbnin"><span>ISBN ___-___-_____</span><b>ENTER</b></div>
+    <div class="sect"><span>Lembar sesi · 4 buku</span><span>isi manual +</span></div>
+    <div class="scroll"><div class="ledger">
+      <div class="lrow"><span class="no">FIK-014/2026</span><span><div class="ti">Laut Bercerita</div><div class="au">tersimpan</div></span><span class="st" style="color:#3C6E47">✓</span></div>
+      <div class="lrow"><span class="no">—— draf</span><span><div class="ti">Atomic Habits</div><div class="au">saran kategori: PSI</div></span><span class="st red">TINJAU</span></div>
+      ${offline
+        ? `<div class="lrow"><span class="no violet">—— menunggu</span><span><div class="ti m" style="font-size:14px">978623…</div><div class="au">menunggu data</div></span><span class="st violet">⏱</span></div>`
+        : `<div class="lrow"><span class="no">—— mencari</span><span><div class="ti m" style="font-size:14px">978602…</div><div class="au">open library…</div></span><span class="st">…</span></div>`}
+    </div></div>`; },
+  detail() { const b = books[0]; return `${C.tabs('Koleksi')}
+    <div class="scroll">
+      <div class="catcard">
+        <div class="grid"><div class="call">FIK<br>CHU<br>l</div>
+          <div><b>Chudori, Leila S.</b><div class="ind">${b.t} / Leila S. Chudori. — Jakarta : KPG, ${b.y}.<br>379 hlm. ; 20 cm.</div>
+          <div class="ind m" style="font-size:12px;margin-top:8px">ISBN 978-979-91-0515-8<br>DDC 899.221 3</div></div></div>
+        <div class="hole"></div>
+      </div>
+      <div class="sect"><span>Eksemplar · 3</span><span>+ tambah</span></div>
+      <div class="ledger">${copies.map(c => `<div class="lrow" style="position:relative"><span class="no ${c.st==='wait'?'violet':''}">${c.no ?? '—— menunggu'}</span>
+        <span><div class="ti" style="font-size:15px;font-weight:400">${c.loc}</div><div class="au">${c.st==='loan' ? `dipinjam ${c.who}, tempo ${c.due}` : c.st==='wait' ? 'menunggu sinkron · belum bisa dicetak' : 'tersedia'}</div></span>
+        <span class="st ${c.st==='loan'?'red':c.st==='wait'?'violet':''}">${c.st==='loan'?'DIPINJAM':c.st==='wait'?'⏱':'ADA'}</span></div>`).join('')}</div>
+      <div style="height:18px"></div>
+      <div class="acts"><span class="pri">Pinjamkan</span><span>Ubah</span><span>Label</span></div>
+    </div>`; },
+};
+
+/* ---------- switcher ---------- */
+const variants = { A, B, C };
+const keys = Object.keys(variants);
+const params = new URLSearchParams(location.search);
+let cur = keys.includes(params.get('variant')) ? params.get('variant') : 'A';
+offline = params.get('offline') === '1';
+
+function render() {
+  const v = variants[cur];
+  const screens = [['Beranda', v.beranda()], ['Sesi Penerimaan (scan)', v.scan()], ['Detail Buku', v.detail()]];
+  document.getElementById('screens').innerHTML = screens.map(([l, h]) =>
+    `<section><div class="screen-label">${l}</div><div class="phone v${cur}">${h}</div></section>`).join('');
+  document.getElementById('stageTitle').innerHTML = `PROTOTYPE · lifelibrary · <b>${cur} — ${v.name}</b>${offline ? ' · keadaan offline' : ''}`;
+  document.getElementById('lbl').textContent = `${cur} (${v.name})`;
+  document.getElementById('off').classList.toggle('on', offline);
+  const p = new URLSearchParams(location.search);
+  p.set('variant', cur); offline ? p.set('offline', '1') : p.delete('offline');
+  history.replaceState(null, '', `?${p}`);
+  lucide.createIcons();
+}
+const step = (d) => { cur = keys[(keys.indexOf(cur) + d + keys.length) % keys.length]; render(); };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('off').onclick = () => { offline = !offline; render(); };
+addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') step(-1);
+  if (e.key === 'ArrowRight') step(1);
+});
+render();
+</script>
+</body>
+</html>
