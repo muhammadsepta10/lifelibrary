@@ -121,3 +121,17 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+
+# lifelibrary (Next.js, secrets, data lokal)
+/node_modules
+/.next/
+/out/
+/build
+.env*
+!.env.example
+.data/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+test-results/
+playwright-report/
