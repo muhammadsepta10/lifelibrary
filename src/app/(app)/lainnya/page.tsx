@@ -1,14 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ChevronRight } from "lucide-react";
+import { ButuhKoneksi, kartuCls } from "@/components/app/kelola";
 import { PageHeader } from "@/components/app/page-header";
 import { useLibrary } from "@/components/app/library-provider";
 import { authClient } from "@/lib/auth-client";
 
 export default function LainnyaPage() {
   const router = useRouter();
-  const { library } = useLibrary();
+  const { library, daftar, online } = useLibrary();
   const { data: sesi } = authClient.useSession();
   const [bekerja, setBekerja] = useState(false);
 
@@ -25,6 +28,21 @@ export default function LainnyaPage() {
   return (
     <>
       <PageHeader judul="Lainnya" keterangan={sesi?.user.email} />
+      <section className="flex flex-col gap-3 p-5 pb-0">
+        <h2 className="font-heading text-xl font-semibold">Pengelolaan</h2>
+        {[
+          { href: "/lainnya/kategori", label: "Kategori", jumlah: daftar?.kategori.filter((k) => !k.diarsipkan).length },
+          { href: "/lainnya/lokasi", label: "Lokasi", jumlah: daftar?.lokasi.length },
+          { href: "/lainnya/aturan", label: "Aturan Kategori", jumlah: daftar?.aturanKategori.length },
+        ].map(({ href, label, jumlah }) => (
+          <Link key={href} href={href} className={`${kartuCls} flex h-14 items-center gap-3 px-4 text-sm font-semibold`}>
+            {label}
+            {jumlah !== undefined && <span className="font-mono text-[13px] text-ink-muted">{jumlah}</span>}
+            {!online && <ButuhKoneksi className="ml-auto" />}
+            <ChevronRight className={`size-5 text-ink-muted ${online ? "ml-auto" : ""}`} aria-hidden />
+          </Link>
+        ))}
+      </section>
       <section className="flex flex-col gap-3 p-5">
         <button
           type="button"
