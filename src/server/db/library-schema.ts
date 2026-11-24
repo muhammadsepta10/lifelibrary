@@ -1,0 +1,104 @@
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+// Waktu server untuk kursor pull. clock_timestamp() (bukan now()) supaya
+// berbeda antar pernyataan di dalam satu transaksi.
+const serverTime = (name: string) =>
+  timestamp(name, { withTimezone: true, mode: "date", precision: 3 })
+    .default(sql`clock_timestamp()`)
+    .notNull();
+
+export const kategori = pgTable("kategori", {
+  id: uuid("id").primaryKey(),
+  kode: text("kode").notNull().unique(),
+  nama: text("nama").notNull(),
+  warna: text("warna").notNull(),
+  diarsipkan: boolean("diarsipkan").notNull().default(false),
+  updatedAt: serverTime("updated_at"),
+});
+
+export const buku = pgTable(
+  "buku",
+  {
+    id: uuid("id").primaryKey(),
+    isbn13: text("isbn13").unique(),
+    judul: text("judul").notNull(),
+    penerbit: text("penerbit"),
+    tahun: integer("tahun"),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [index("buku_updated_at_idx").on(t.updatedAt)],
+);
+
+export const kontributor = pgTable("kontributor", {
+  id: uuid("id").primaryKey(),
+  nama: text("nama").notNull(),
+});
+
+export const bukuKontributor = pgTable(
+  "buku_kontributor",
+  {
+    bukuId: uuid("buku_id")
+      .notNull()
+      .references(() => buku.id),
+    kontributorId: uuid("kontributor_id")
+      .notNull()
+      .references(() => kontributor.id),
+    peran: text("peran").notNull(),
+    urutan: integer("urutan").notNull(),
+    utama: boolean("utama").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.bukuId, t.kontributorId, t.peran] })],
+);
+
+export const eksemplar = pgTable(
+  "eksemplar",
+  {
+    id: uuid("id").primaryKey(),
+    bukuId: uuid("buku_id")
+      .notNull()
+      .references(() => buku.id),
+    kategoriId: uuid("kategori_id")
+      .notNull()
+      .references(() => kategori.id),
+    /** Null sampai tersinkron; setelah diberikan tidak pernah berubah (ADR 0001). */
+    nomorInduk: text("nomor_induk").unique(),
+    kodeKategoriSaatDicatat: text("kode_kategori_saat_dicatat").notNull(),
+    tahunPencatatan: integer("tahun_pencatatan").notNull(),
+    waktuDicatatPerangkat: timestamp("waktu_dicatat_perangkat", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    status: text("status").notNull().default("aktif"),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [index("eksemplar_updated_at_idx").on(t.updatedAt)],
+);
+
+/** Penghitung Nomor Induk per (kode Kategori, tahun pencatatan). */
+export const nomorIndukCounter = pgTable(
+  "nomor_induk_counter",
+  {
+    kode: text("kode").notNull(),
+    tahun: integer("tahun").notNull(),
+    last: integer("last").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.kode, t.tahun] })],
+);
+
+/** Catatan mutasi yang sudah diproses; dasar idempotensi push. */
+export const syncMutasi = pgTable("sync_mutasi", {
+  id: uuid("id").primaryKey(),
+  hasil: jsonb("hasil").notNull(),
+  diterimaPada: timestamp("diterima_pada", { withTimezone: true }).defaultNow().notNull(),
+});
