@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { JenisAturan } from "@/lib/kelola-protocol";
 import type { Mutasi } from "@/lib/sync-protocol";
 
 export type KategoriRow = {
@@ -7,6 +8,16 @@ export type KategoriRow = {
   nama: string;
   warna: string;
   diarsipkan: boolean;
+};
+
+export type LokasiRow = { id: string; nama: string };
+
+export type AturanKategoriRow = {
+  id: string;
+  jenis: JenisAturan;
+  pola: string;
+  kategoriId: string;
+  prioritas: number;
 };
 
 export type BukuRow = {
@@ -42,6 +53,8 @@ export type MetaRow = { key: string; value: string | null };
 
 export class LocalDb extends Dexie {
   kategori!: EntityTable<KategoriRow, "id">;
+  lokasi!: EntityTable<LokasiRow, "id">;
+  aturanKategori!: EntityTable<AturanKategoriRow, "id">;
   buku!: EntityTable<BukuRow, "id">;
   eksemplar!: EntityTable<EksemplarRow, "id">;
   outbox!: EntityTable<OutboxRow, "seq">;
@@ -55,6 +68,10 @@ export class LocalDb extends Dexie {
       eksemplar: "id, bukuId, kategoriId, waktuDicatat",
       outbox: "++seq, &id",
       meta: "key",
+    });
+    this.version(2).stores({
+      lokasi: "id",
+      aturanKategori: "id, kategoriId",
     });
   }
 }

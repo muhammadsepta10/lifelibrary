@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
+
+export type { AturanKategoriDto, KategoriDto, LokasiDto };
 
 /**
  * Kontrak antara Perpustakaan Lokal (klien) dan API Sinkronisasi (server).
@@ -60,14 +63,6 @@ export type HasilMutasi =
 
 export type PushResponse = { hasil: HasilMutasi[] };
 
-export type KategoriDto = {
-  id: string;
-  kode: string;
-  nama: string;
-  warna: string;
-  diarsipkan: boolean;
-};
-
 export type BukuDto = {
   id: string;
   judul: string;
@@ -91,6 +86,8 @@ export type PullResponse = {
   /** Kursor opak; kirim kembali pada pull berikutnya. */
   kursor: string | null;
   kategori: KategoriDto[];
+  lokasi: LokasiDto[];
+  aturanKategori: AturanKategoriDto[];
   buku: BukuDto[];
   eksemplar: EksemplarDto[];
 };

@@ -9,6 +9,8 @@ export const KATEGORI_ID = Object.fromEntries(
 export function mutasiBukuDanEksemplar(opts: {
   judul?: string;
   kode?: string;
+  /** Menimpa `kode` bila Kategorinya bukan preset (mis. buatan Pemilik). */
+  kategoriId?: string;
   waktuDicatat?: string;
 }) {
   const bukuId = crypto.randomUUID();
@@ -31,7 +33,7 @@ export function mutasiBukuDanEksemplar(opts: {
       eksemplar: {
         id: eksemplarId,
         bukuId,
-        kategoriId: KATEGORI_ID[opts.kode ?? "FIK"],
+        kategoriId: opts.kategoriId ?? KATEGORI_ID[opts.kode ?? "FIK"],
         waktuDicatat: opts.waktuDicatat ?? "2026-03-14T10:00:00+07:00",
       },
     },

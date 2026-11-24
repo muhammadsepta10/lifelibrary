@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -18,14 +19,54 @@ const serverTime = (name: string) =>
     .default(sql`clock_timestamp()`)
     .notNull();
 
-export const kategori = pgTable("kategori", {
-  id: uuid("id").primaryKey(),
-  kode: text("kode").notNull().unique(),
-  nama: text("nama").notNull(),
-  warna: text("warna").notNull(),
-  diarsipkan: boolean("diarsipkan").notNull().default(false),
-  updatedAt: serverTime("updated_at"),
-});
+export const kategori = pgTable(
+  "kategori",
+  {
+    id: uuid("id").primaryKey(),
+    kode: text("kode").notNull(),
+    nama: text("nama").notNull(),
+    warna: text("warna").notNull(),
+    diarsipkan: boolean("diarsipkan").notNull().default(false),
+    /** Penanda hapus supaya pull bisa menyampaikannya ke perangkat. */
+    dihapus: boolean("dihapus").notNull().default(false),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [
+    // Kode hanya harus unik di antara Kategori aktif: kode Kategori yang
+    // diarsipkan atau dihapus boleh dipakai lagi.
+    uniqueIndex("kategori_kode_aktif_uq")
+      .on(t.kode)
+      .where(sql`${t.diarsipkan} = false and ${t.dihapus} = false`),
+    index("kategori_updated_at_idx").on(t.updatedAt),
+  ],
+);
+
+export const lokasi = pgTable(
+  "lokasi",
+  {
+    id: uuid("id").primaryKey(),
+    nama: text("nama").notNull(),
+    dihapus: boolean("dihapus").notNull().default(false),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [index("lokasi_updated_at_idx").on(t.updatedAt)],
+);
+
+export const aturanKategori = pgTable(
+  "aturan_kategori",
+  {
+    id: uuid("id").primaryKey(),
+    jenis: text("jenis").notNull(),
+    pola: text("pola").notNull(),
+    kategoriId: uuid("kategori_id")
+      .notNull()
+      .references(() => kategori.id),
+    prioritas: integer("prioritas").notNull(),
+    dihapus: boolean("dihapus").notNull().default(false),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [index("aturan_kategori_updated_at_idx").on(t.updatedAt)],
+);
 
 export const buku = pgTable(
   "buku",
