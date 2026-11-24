@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { JenisAturan } from "@/lib/kelola-protocol";
+import type { FieldBuku, FieldEksemplar, KontributorDto } from "@/lib/buku-fields";
 import type { Mutasi } from "@/lib/sync-protocol";
 
 export type KategoriRow = {
@@ -20,16 +21,12 @@ export type AturanKategoriRow = {
   prioritas: number;
 };
 
-export type BukuRow = {
+export type BukuRow = FieldBuku & {
   id: string;
-  judul: string;
-  penerbit: string | null;
-  tahun: number | null;
-  isbn13: string | null;
-  kontributor: { id: string; nama: string; peran: "pengarang" | "penerjemah" | "editor"; utama: boolean }[];
+  kontributor: KontributorDto[];
 };
 
-export type EksemplarRow = {
+export type EksemplarRow = FieldEksemplar & {
   id: string;
   bukuId: string;
   kategoriId: string;
@@ -39,6 +36,8 @@ export type EksemplarRow = {
   waktuDicatat: string;
   status: "aktif" | "keluar";
   menungguSinkron: boolean;
+  /** Label perlu dicetak (ulang); Antrean Cetak (tiket lain) membacanya. */
+  perluCetak: boolean;
 };
 
 export type OutboxRow = {
@@ -50,6 +49,31 @@ export type OutboxRow = {
 };
 
 export type MetaRow = { key: string; value: string | null };
+
+export const bukuKosong = (): Omit<FieldBuku, "judul"> => ({
+  penerbit: null,
+  kota: null,
+  tahun: null,
+  edisi: null,
+  seri: null,
+  jilid: null,
+  bahasa: null,
+  halaman: null,
+  sinopsis: null,
+  sampul: null,
+  subjek: [],
+  kelasDdc: null,
+  isbn13: null,
+});
+
+export const eksemplarKosong = (): FieldEksemplar & { perluCetak: boolean } => ({
+  tanggalMasuk: null,
+  asal: null,
+  harga: null,
+  kondisi: null,
+  lokasiId: null,
+  perluCetak: false,
+});
 
 export class LocalDb extends Dexie {
   kategori!: EntityTable<KategoriRow, "id">;
@@ -73,5 +97,19 @@ export class LocalDb extends Dexie {
       lokasi: "id",
       aturanKategori: "id, kategoriId",
     });
+    // Field Buku/Eksemplar bertambah (tanpa kunci baru, kecuali lokasiId). Baris lama
+    // dilengkapi dengan nilai kosong supaya bentuknya sama dengan hasil pull.
+    this.version(3)
+      .stores({ eksemplar: "id, bukuId, kategoriId, lokasiId, waktuDicatat" })
+      .upgrade(async (tx) => {
+        await tx
+          .table("buku")
+          .toCollection()
+          .modify((b) => Object.assign(b, bukuKosong(), { ...b }));
+        await tx
+          .table("eksemplar")
+          .toCollection()
+          .modify((e) => Object.assign(e, eksemplarKosong(), { ...e }));
+      });
   }
 }
