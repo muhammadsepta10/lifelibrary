@@ -13,7 +13,7 @@ export async function GET(request: Request, { params }: Ctx) {
 
   const { key } = await params;
   const kunci = key.length === 1 ? key[0] : "";
-  if (!KUNCI_SAMPUL.test(kunci) || kunci.includes("..")) {
+  if (!KUNCI_SAMPUL.test(kunci)) {
     return Response.json({ galat: "Tidak ditemukan" }, { status: 404 });
   }
   const sampul = await metadataRuntime().coverStore.get(kunci);

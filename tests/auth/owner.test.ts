@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAuth } from "@/server/auth";
 import { seedOwner } from "@/server/auth-seed";
-import { getOwnerSession } from "@/server/owner-guard";
 import { createTestDb } from "../support/test-db";
 
 let ctx: Awaited<ReturnType<typeof createTestDb>>;
@@ -30,7 +29,7 @@ describe("Login Pemilik", () => {
     });
     expect(res.status).toBe(200);
 
-    const sesi = await getOwnerSession(auth, new Headers({ cookie: cookieDari(res) }));
+    const sesi = await auth.api.getSession({ headers: new Headers({ cookie: cookieDari(res) }) });
     expect(sesi?.user.email).toBe("pemilik@example.com");
   });
 
@@ -43,8 +42,8 @@ describe("Login Pemilik", () => {
   });
 
   it("Pengunjung tanpa login tidak dikenali (API menjawab 401)", async () => {
-    expect(await getOwnerSession(auth, new Headers())).toBeNull();
-    expect(await getOwnerSession(auth, new Headers({ cookie: "better-auth.session_token=palsu" }))).toBeNull();
+    expect(await auth.api.getSession({ headers: new Headers() })).toBeNull();
+    expect(await auth.api.getSession({ headers: new Headers({ cookie: "better-auth.session_token=palsu" }) })).toBeNull();
   });
 
   it("pendaftaran akun baru dimatikan: hanya satu akun Pemilik", async () => {
