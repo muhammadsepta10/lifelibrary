@@ -8,6 +8,12 @@ import {
   type KelolaTransport,
   type LokasiDto,
 } from "@/lib/kelola-protocol";
+import {
+  hitungGrid,
+  TEMPLATE_LABEL_BAWAAN,
+  type GridTemplate,
+  type TemplateLabel,
+} from "@/lib/label/template-label";
 import { susunBukuInduk, type BarisBukuInduk } from "@/lib/buku-induk";
 import { labelField } from "@/lib/label-field";
 import type { PenyianganDto, PenyianganInput, PenyianganTransport } from "@/lib/penyiangan-protocol";
@@ -27,6 +33,15 @@ import {
   type LokasiRow,
   type OutboxRow,
 } from "./db";
+import {
+  ALASAN_BELUM_PUNYA_NOMOR_INDUK,
+  susunRencanaCetak,
+  type InputRencanaCetak,
+  type ItemAntreanCetak,
+  type JumlahAntreanCetak,
+  type RencanaCetak,
+  type TidakBisaDicetak,
+} from "./cetak";
 import type { DrafBuku } from "@/lib/draf-buku";
 import { bisaSimpanDraf, type BukuDuplikat } from "./draf";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
@@ -38,6 +53,18 @@ import { isoLokal } from "./waktu";
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LogRow, LokasiRow } from "./db";
 export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
+export { hitungGrid, TEMPLATE_LABEL_BAWAAN, type GridTemplate, type TemplateLabel };
+export type {
+  InputRencanaCetak,
+  ItemAntreanCetak,
+  JenisSel,
+  JumlahAntreanCetak,
+  LabelCetak,
+  LembarCetak,
+  RencanaCetak,
+  SelCetak,
+  TidakBisaDicetak,
+} from "./cetak";
 export { saringKoleksi, normalisasiTeks, type KriteriaKoleksi } from "./cari-koleksi";
 export { STATUS_KOLEKSI, LABEL_STATUS_KOLEKSI, type StatusKoleksi } from "./status-koleksi";
 export type { Statistik } from "./statistik";
@@ -49,6 +76,10 @@ export { bisaSimpanDraf, type BukuDuplikat };
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
 const META_KURSOR = "kursor";
+const META_TEMPLATE_LABEL = "templateLabel";
+
+/** Template Label beserta kolom × baris hasil hitungan. */
+export type TemplateLabelLengkap = TemplateLabel & GridTemplate;
 const LOG_MAKS = 200;
 
 export type CreateOptions = {
@@ -136,6 +167,7 @@ type PerubahanDaftar = {
   kategori?: KategoriDto[];
   lokasi?: LokasiDto[];
   aturanKategori?: AturanKategoriDto[];
+  templateLabel?: TemplateLabel | null;
 };
 
 export type StatusSinkronisasi = {
@@ -433,9 +465,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     await siap;
     const { kontributor: inputKontributor, ...inputField } = perubahan;
     const field = periksaFieldBuku(inputField);
-    await db.transaction("rw", [db.buku, db.outbox], async () => {
+    await db.transaction("rw", [db.buku, db.outbox, db.eksemplar, db.kategori], async () => {
       const buku = await db.buku.get(bukuId);
       if (!buku) throw new ValidasiError("bukuId", "Buku tidak ditemukan");
+      const nomorPanggilLama = await nomorPanggilEksemplarBuku(bukuId);
       const beda: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(field)) {
         if (!samaNilai(buku[k as keyof BukuRow], v)) beda[k] = v;
@@ -448,7 +481,30 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       if (Object.keys(beda).length === 0) return;
       await db.buku.update(bukuId, beda as Partial<BukuRow>);
       await antre({ id: uuid(), jenis: "buku.ubah", bukuId, waktuUbah: isoLokal(now()), perubahan: beda });
+      // Nomor Panggil berubah: Label lama tidak berlaku lagi, Eksemplar masuk Antrean Cetak.
+      const nomorPanggilBaru = await nomorPanggilEksemplarBuku(bukuId);
+      const berubah = [...nomorPanggilBaru]
+        .filter(([id, teks]) => nomorPanggilLama.get(id) !== teks)
+        .map(([id]) => id);
+      await db.eksemplar.where("id").anyOf(berubah).modify({ perluCetak: true });
     });
+  }
+
+  /** Nomor Panggil tiap Eksemplar sebuah Buku menurut data lokal saat ini. */
+  async function nomorPanggilEksemplarBuku(bukuId: string) {
+    const buku = await db.buku.get(bukuId);
+    const peta = new Map<string, string>();
+    if (!buku) return peta;
+    const utama = pengarangUtama(buku);
+    for (const e of await db.eksemplar.where("bukuId").equals(bukuId).toArray()) {
+      const k = await db.kategori.get(e.kategoriId);
+      if (!k) continue;
+      peta.set(
+        e.id,
+        hitungNomorPanggil({ kodeKategori: k.kode, pengarangUtama: utama?.nama ?? "", judul: buku.judul }).teks,
+      );
+    }
+    return peta;
   }
 
   /** Mengubah data penerimaan Eksemplar (tanggal masuk, asal, harga, kondisi, Lokasi). */
@@ -710,10 +766,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     "buku.ubah": "Ubah",
     "eksemplar.ubah": "Ubah",
     "eksemplar.koreksiKategori": "Koreksi Kategori",
+    "eksemplar.tandaiTercetak": "Tandai tercetak",
   };
 
   async function ringkasan(m: Mutasi): Promise<string> {
     if (m.jenis === "buku.tambah") return `${KATA_JENIS[m.jenis]} ${m.buku.judul}`;
+    if (m.jenis === "eksemplar.tandaiTercetak") return `${KATA_JENIS[m.jenis]} ${m.eksemplarIds.length} Label`;
     let bukuId: string;
     if (m.jenis === "eksemplar.catat") bukuId = m.eksemplar.bukuId;
     else if (m.jenis === "buku.ubah") bukuId = m.bukuId;
@@ -756,7 +814,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return bacaLog();
   }
 
-  const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori];
+  const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori, db.meta];
 
   /** Tulis perubahan daftar; yang bertanda `dihapus` dibuang dari salinan lokal. */
   async function tulisDaftar(p: PerubahanDaftar) {
@@ -782,6 +840,11 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         .map(({ id, jenis, pola, kategoriId, prioritas }) => ({ id, jenis, pola, kategoriId, prioritas })),
     );
     await db.aturanKategori.bulkDelete(aturan.filter((a) => a.dihapus).map((a) => a.id));
+
+    // Template Label disalin di tabel meta (satu per koleksi); null = tidak ada kabar baru.
+    if (p.templateLabel) {
+      await db.meta.put({ key: META_TEMPLATE_LABEL, value: JSON.stringify(p.templateLabel) });
+    }
   }
 
   /**
@@ -792,6 +855,14 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   async function medanTertunda() {
     const peta = new Map<string, Set<string>>();
     for (const o of await db.outbox.toArray()) {
+      if (o.mutasi.jenis === "eksemplar.tandaiTercetak") {
+        // Status cetak lokal belum diterima server: pull tidak boleh mengembalikannya ke antrean.
+        for (const id of o.mutasi.eksemplarIds) {
+          const kunci = `eksemplar:${id}`;
+          peta.set(kunci, (peta.get(kunci) ?? new Set<string>()).add("perluCetak"));
+        }
+        continue;
+      }
       const medan = medanEdit(o.mutasi);
       if (!medan) continue;
       const set = peta.get(medan.kunci) ?? new Set<string>();
@@ -809,7 +880,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   }
 
   async function terapkanPull(res: PullResponse) {
-    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.meta, db.outbox], async () => {
+    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.outbox], async () => {
       const lindung = await medanTertunda();
       await tulisDaftar(res);
       const bukuLama = new Map((await db.buku.bulkGet(res.buku.map((b) => b.id))).map((b) => [b?.id, b]));
@@ -971,6 +1042,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
 
     const kategori = perintah(transport.kategori, (d) => ({ kategori: [d] }));
     return {
+      templateLabel: {
+        simpan: (template: TemplateLabel) =>
+          jalankan(() => transport.templateLabel.simpan(template), (d) => ({ templateLabel: d })),
+      },
       kategori: {
         ...kategori,
         arsipkan: (id: string) => kategori.ubah(id, { diarsipkan: true }),
@@ -979,6 +1054,154 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       lokasi: perintah(transport.lokasi, (d) => ({ lokasi: [d] })),
       aturanKategori: perintah(transport.aturanKategori, (d) => ({ aturanKategori: [d] })),
     };
+  }
+
+  /** Template Label tersimpan (atau bawaan) beserta kolom × baris-nya. */
+  async function templateLabel(): Promise<TemplateLabelLengkap> {
+    await siap;
+    return bacaTemplateLabel();
+  }
+
+  const bacaTemplateLabel = async (): Promise<TemplateLabelLengkap> => {
+    const t = await bacaTemplateTersimpan();
+    return { ...t, ...hitungGrid(t) };
+  };
+
+  async function bacaTemplateTersimpan(): Promise<TemplateLabel> {
+    const row = await db.meta.get(META_TEMPLATE_LABEL);
+    if (!row?.value) return TEMPLATE_LABEL_BAWAAN;
+    const { kertas, w, h, mt, ml, gx, gy } = JSON.parse(row.value) as TemplateLabel;
+    return { kertas, w, h, mt, ml, gx, gy };
+  }
+
+  /** Semua Eksemplar aktif sebagai bahan Label, urut menurut waktu dicatat (terlama dulu). */
+  async function bacaBahanCetak(): Promise<{ item: ItemAntreanCetak; perluCetak: boolean }[]> {
+    const [eksemplar, buku, kategori] = await Promise.all([
+      db.eksemplar.toArray(),
+      db.buku.toArray(),
+      db.kategori.toArray(),
+    ]);
+    const bukuById = new Map(buku.map((b) => [b.id, b]));
+    const katById = new Map(kategori.map((k) => [k.id, k]));
+    return eksemplar
+      .filter((e) => e.status === "aktif")
+      .sort((a, b) => a.waktuDicatat.localeCompare(b.waktuDicatat) || a.id.localeCompare(b.id))
+      .flatMap((e) => {
+        const b = bukuById.get(e.bukuId);
+        const k = katById.get(e.kategoriId);
+        if (!b || !k) return [];
+        const utama = pengarangUtama(b);
+        const bisaDicetak = e.nomorInduk !== null;
+        return [
+          {
+            perluCetak: e.perluCetak,
+            item: {
+              eksemplarId: e.id,
+              bukuId: b.id,
+              judul: b.judul,
+              pengarang: utama?.nama ?? "",
+              kategori: { kode: k.kode, nama: k.nama, warna: k.warna },
+              nomorInduk: e.nomorInduk,
+              nomorPanggil: hitungNomorPanggil({
+                kodeKategori: k.kode,
+                pengarangUtama: utama?.nama ?? "",
+                judul: b.judul,
+              }),
+              waktuDicatat: e.waktuDicatat,
+              bisaDicetak,
+              alasanTidakBisa: bisaDicetak ? null : ALASAN_BELUM_PUNYA_NOMOR_INDUK,
+            },
+          },
+        ];
+      });
+  }
+
+  /** Eksemplar yang Labelnya belum dicetak (atau perlu dicetak ulang). */
+  async function bacaAntreanCetak(): Promise<ItemAntreanCetak[]> {
+    return (await bacaBahanCetak()).filter((b) => b.perluCetak).map((b) => b.item);
+  }
+
+  async function bacaJumlahAntrean(): Promise<JumlahAntreanCetak> {
+    const antrean = await bacaAntreanCetak();
+    const siapDicetak = antrean.filter((i) => i.bisaDicetak).length;
+    return { total: antrean.length, siapDicetak, menungguNomorInduk: antrean.length - siapDicetak };
+  }
+
+  async function antreanCetak(): Promise<ItemAntreanCetak[]> {
+    await siap;
+    return bacaAntreanCetak();
+  }
+
+  async function jumlahAntreanCetak(): Promise<JumlahAntreanCetak> {
+    await siap;
+    return bacaJumlahAntrean();
+  }
+
+  /** Eksemplar Menunggu Sinkron (belum punya Nomor Induk) tidak bisa ditandai tercetak. */
+  async function tandaiTercetak(eksemplarIds: string[]) {
+    await siap;
+    const ids = [...new Set(eksemplarIds)];
+    await db.transaction("rw", [db.eksemplar, db.outbox], async () => {
+      const antri: string[] = [];
+      for (const id of ids) {
+        const e = await db.eksemplar.get(id);
+        if (!e) throw new ValidasiError("eksemplarId", "Eksemplar tidak ditemukan");
+        if (e.nomorInduk === null) {
+          throw new ValidasiError(
+            "eksemplarId",
+            `Eksemplar ${ALASAN_BELUM_PUNYA_NOMOR_INDUK}, jadi Labelnya belum bisa dicetak atau ditandai tercetak`,
+          );
+        }
+        if (e.perluCetak) antri.push(id);
+      }
+      await db.eksemplar.where("id").anyOf(antri).modify({ perluCetak: false });
+      // Server menerima paling banyak 500 Eksemplar per mutasi.
+      for (let i = 0; i < antri.length; i += 500) {
+        await antre({
+          id: uuid(),
+          jenis: "eksemplar.tandaiTercetak",
+          eksemplarIds: antri.slice(i, i + 500),
+          waktuUbah: isoLokal(now()),
+        });
+      }
+    });
+  }
+
+  /**
+   * Pratinjau cetak: sel per lembar (dilewati, Label, kosong), jumlah lembar,
+   * dan Eksemplar yang tidak bisa dicetak. Hanya membaca, jadi jalan offline.
+   */
+  async function rencanaCetak(input: InputRencanaCetak): Promise<RencanaCetak> {
+    await siap;
+    const template = input.template ?? (await bacaTemplateTersimpan());
+    const bahan = new Map((await bacaBahanCetak()).map((b) => [b.item.eksemplarId, b.item]));
+    const pilihan = [...new Set(input.eksemplarIds)].flatMap((id) => {
+      const i = bahan.get(id);
+      return i ? [i] : [];
+    });
+    const tidakBisa: TidakBisaDicetak[] = pilihan
+      .filter((i) => !i.bisaDicetak)
+      .map((i) => ({ eksemplarId: i.eksemplarId, judul: i.judul, alasan: i.alasanTidakBisa! }));
+    const siapCetak = pilihan.flatMap((i) =>
+      i.nomorInduk === null ? [] : [{ ...i, nomorInduk: i.nomorInduk }],
+    );
+    return susunRencanaCetak(
+      template,
+      { posisiAwal: input.posisiAwal, halamanUji: input.halamanUji ?? false },
+      siapCetak,
+      tidakBisa,
+    );
+  }
+
+  /** Mencetak hanya bisa online: offline gagal dengan `ButuhKoneksiError` ("Butuh koneksi"). */
+  async function siapkanCetak(input: InputRencanaCetak & { online: boolean }): Promise<RencanaCetak> {
+    if (!input.online) throw new ButuhKoneksiError();
+    return rencanaCetak({
+      eksemplarIds: input.eksemplarIds,
+      posisiAwal: input.posisiAwal,
+      template: input.template,
+      halamanUji: input.halamanUji,
+    });
   }
 
   function pantau<T>(baca: () => Promise<T>, cb: (nilai: T) => void) {
@@ -1014,6 +1237,13 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     ubahBuku,
     ubahEksemplar,
     koreksiKategori,
+    antreanCetak,
+    /** Jumlah untuk chip "Label siap dicetak": pakai `siapDicetak`. */
+    jumlahAntreanCetak,
+    tandaiTercetak,
+    templateLabel,
+    rencanaCetak,
+    siapkanCetak,
     daftarKoleksi,
     cariKoleksi,
     bukuInduk,
@@ -1037,6 +1267,9 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     pantauStatistik: (cb: (s: Awaited<ReturnType<typeof bacaStatistik>>) => void) => pantau(bacaStatistik, cb),
     pantauDaftar: (cb: (daftar: DaftarLokal) => void) => pantau(bacaDaftar, cb),
     pantauStatus: (cb: (status: StatusSinkronisasi) => void) => pantau(bacaStatus, cb),
+    pantauAntreanCetak: (cb: (items: ItemAntreanCetak[]) => void) => pantau(bacaAntreanCetak, cb),
+    pantauJumlahAntreanCetak: (cb: (jumlah: JumlahAntreanCetak) => void) => pantau(bacaJumlahAntrean, cb),
+    pantauTemplateLabel: (cb: (t: TemplateLabelLengkap) => void) => pantau(bacaTemplateLabel, cb),
     pantauAntrean: (cb: (antrean: DaftarAntrean) => void) => pantau(bacaAntrean, cb),
     pantauLog: (cb: (log: LogRow[]) => void) => pantau(bacaLog, cb),
   };

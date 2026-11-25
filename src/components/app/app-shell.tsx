@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CloudOff, ClockArrowUp, House, Library, Menu, Plus } from "lucide-react";
+import { CloudOff, ClockArrowUp, House, Library, Menu, Plus, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLibrary } from "./library-provider";
 
@@ -26,7 +26,7 @@ function aktif(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { status, online } = useLibrary();
+  const { status, online, jumlahCetak } = useLibrary();
   const menunggu = status?.menunggu ?? 0;
   const gagal = status?.ditolak ?? 0;
   // Badge Sinkron: jumlah Menunggu Sinkron; "!" merah bila hanya ada yang Gagal terkirim.
@@ -60,6 +60,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </Link>
         ))}
+        <p className="mb-1 mt-4 text-xs uppercase tracking-wide opacity-60">Pengelolaan</p>
+        <Link
+          href="/cetak"
+          aria-current={pathname.startsWith("/cetak") ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-sidebar-accent",
+            pathname.startsWith("/cetak") && "bg-sidebar-accent",
+          )}
+        >
+          <Tag className="size-5" strokeWidth={1.9} aria-hidden />
+          Cetak Label
+          {!!jumlahCetak?.siapDicetak && (
+            <span className="ml-auto rounded-full bg-menunggu px-2 text-xs font-semibold text-menunggu-fg">
+              {jumlahCetak.siapDicetak}
+            </span>
+          )}
+        </Link>
       </aside>
 
       {!online && (

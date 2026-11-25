@@ -6,6 +6,7 @@ import {
   type DaftarLokal,
   type DaftarAntrean,
   type ItemKoleksi,
+  type JumlahAntreanCetak,
   type KategoriRow,
   type LocalLibrary,
   type LogRow,
@@ -32,6 +33,8 @@ type Ctx = {
   kategori: KategoriRow[] | undefined;
   /** Salinan lokal Kategori (termasuk arsip), Lokasi, dan Aturan Kategori. */
   daftar: DaftarLokal | undefined;
+  /** Antrean Cetak: `siapDicetak` = "Label siap dicetak". */
+  jumlahCetak: JumlahAntreanCetak | undefined;
   /** Perintah kelola; hanya berhasil saat online (ADR 0004). */
   kelola: ReturnType<LocalLibrary["kelola"]> | null;
   keadaan: KeadaanSinkron;
@@ -62,6 +65,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [koleksiSemua, setKoleksiSemua] = useState<ItemKoleksi[]>();
   const [status, setStatus] = useState<StatusSinkronisasi>();
   const [daftar, setDaftar] = useState<DaftarLokal>();
+  const [jumlahCetak, setJumlahCetak] = useState<JumlahAntreanCetak>();
   const [keadaan, setKeadaan] = useState<KeadaanSinkron>({ jenis: "diam" });
   const [online, setOnline] = useState(true);
   const [antrean, setAntrean] = useState<DaftarAntrean>();
@@ -80,6 +84,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       lib.pantauDaftar(setDaftar),
       lib.pantauAntrean(setAntrean),
       lib.pantauLog(setLog),
+      lib.pantauJumlahAntreanCetak(setJumlahCetak),
     ];
     const timerToast = new Set<ReturnType<typeof setTimeout>>();
     const p = buatPenjadwal({
@@ -136,11 +141,11 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, kelola, keadaan, online, antrean, log,
+      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
       sinkronkan, cobaLagi,
     }),
     [
-      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, kelola, keadaan, online, antrean, log,
+      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
       sinkronkan, cobaLagi,
     ],
   );

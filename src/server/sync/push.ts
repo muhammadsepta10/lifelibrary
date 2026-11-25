@@ -9,7 +9,7 @@ import {
 } from "@/lib/sync-protocol";
 import type { HasilTanpaId } from "./hasil";
 import { tambahBuku, ubahBuku } from "./mutasi-buku";
-import { catatEksemplar, koreksiKategori, ubahEksemplar } from "./mutasi-eksemplar";
+import { catatEksemplar, koreksiKategori, tandaiTercetak, ubahEksemplar } from "./mutasi-eksemplar";
 import type { Tx } from "./tx";
 
 export async function push(db: Db, input: unknown): Promise<PushResponse> {
@@ -32,6 +32,8 @@ function terapkan(tx: Tx, m: Mutasi): Promise<HasilTanpaId> {
       return catatEksemplar(tx, m);
     case "eksemplar.ubah":
       return ubahEksemplar(tx, m);
+    case "eksemplar.tandaiTercetak":
+      return tandaiTercetak(tx, m);
     case "eksemplar.koreksiKategori":
       return koreksiKategori(tx, m);
   }

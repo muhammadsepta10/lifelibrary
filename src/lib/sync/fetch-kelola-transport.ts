@@ -28,4 +28,5 @@ export const fetchKelolaTransport = {
   kategori: perintah("kategori"),
   lokasi: perintah("lokasi"),
   aturanKategori: perintah("aturan-kategori"),
+  templateLabel: { simpan: (input: unknown) => kirim("PUT", "template-label", input) },
 } as KelolaTransport;

@@ -7,6 +7,7 @@ import {
   type FieldEksemplar,
   type KontributorDto,
 } from "./buku-fields";
+import type { TemplateLabel } from "./label/template-label";
 import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
 import type { PenyianganDto } from "./penyiangan-protocol";
 
@@ -70,6 +71,13 @@ export const mutasiSchema = z.discriminatedUnion("jenis", [
     waktuUbah: waktuPerangkat,
     perubahan: perubahanEksemplarSchema,
   }),
+  /** Pemilik menandai Label Eksemplar sudah tercetak: keluar dari Antrean Cetak. */
+  z.object({
+    id: uuid,
+    jenis: z.literal("eksemplar.tandaiTercetak"),
+    eksemplarIds: z.array(uuid).min(1).max(500),
+    waktuUbah: waktuPerangkat,
+  }),
   /** Koreksi Kategori: mengubah Nomor Panggil, tidak pernah Nomor Induk (ADR 0001). */
   z.object({
     id: uuid,
@@ -117,7 +125,10 @@ export type EksemplarDto = FieldEksemplar & {
   status: "aktif" | "keluar";
   /** Terisi bila `status` = `keluar` (Penyiangan). */
   penyiangan: PenyianganDto | null;
-  /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Antrean Cetak memakainya. */
+  /**
+   * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak) dan
+   * kembali benar bila Nomor Panggilnya berubah. Antrean Cetak membacanya.
+   */
   perluCetak: boolean;
 };
 
@@ -127,6 +138,8 @@ export type PullResponse = {
   kategori: KategoriDto[];
   lokasi: LokasiDto[];
   aturanKategori: AturanKategoriDto[];
+  /** Template Label yang tersimpan bila berubah sejak kursor; null = tidak ada kabar baru. */
+  templateLabel: TemplateLabel | null;
   buku: BukuDto[];
   eksemplar: EksemplarDto[];
 };
