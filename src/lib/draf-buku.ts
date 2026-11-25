@@ -141,7 +141,9 @@ export function drafKosong(isbn13: string): DrafBuku {
 /** Alamat gambar sampul yang dilayani aplikasi (hanya Pemilik yang login). */
 export const urlSampul = (kunci: string) => `/api/covers/${kunci}`;
 
-const MAKS_SUBJEK = 20;
+/** Batas subjek pada satu draf/Kandidat dan jumlah Kandidat yang ditawarkan (ADR 0007). */
+export const MAKS_SUBJEK = 20;
+export const MAKS_KANDIDAT = 5;
 
 const kosong = (nilai: unknown) => nilai === null || nilai === undefined || nilai === "" || (Array.isArray(nilai) && nilai.length === 0);
 
