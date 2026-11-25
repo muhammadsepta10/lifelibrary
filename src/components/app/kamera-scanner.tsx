@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { locateFileZxing } from "@/lib/zxing-lokal";
 
 /**
  * Format barcode yang dikenali pemindai. Tiket ini hanya `ean_13` (ISBN);
@@ -16,7 +17,9 @@ type Detektor = { detect(sumber: HTMLVideoElement): Promise<{ rawValue: string; 
 
 /** Pemindai ZXing (WASM) lewat paket `barcode-detector`: satu jalur kode di semua browser, termasuk iOS. */
 async function buatDetektor(formats: FormatBarcode[]): Promise<Detektor> {
-  const { BarcodeDetector } = await import("barcode-detector/ponyfill");
+  const { BarcodeDetector, setZXingModuleOverrides } = await import("barcode-detector/ponyfill");
+  // WASM dari aplikasi sendiri (precache Service Worker), bukan jsDelivr: scan harus jalan offline.
+  setZXingModuleOverrides({ locateFile: locateFileZxing });
   return new BarcodeDetector({ formats }) as Detektor;
 }
 
@@ -100,7 +103,7 @@ export function KameraScanner({
       try {
         detektor = await buatDetektor(kunciFormat.split(",") as FormatBarcode[]);
       } catch {
-        // WASM pemindai belum bisa dimuat (mis. offline pertama kali): kamera tetap tampil, ketik ISBN.
+        // WASM pemindai belum bisa dimuat (mis. offline sebelum pernah dibuka online): kamera tetap tampil, ketik ISBN.
         if (!batal) setPemindaiGalat(true);
         return;
       }

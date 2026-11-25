@@ -45,3 +45,30 @@ export async function keluarDanHapusData(deps: {
     return { keluar: false };
   }
 }
+
+const KUNCI_KELUAR_TERTUNDA = "lifelibrary:keluar-tertunda";
+
+/** Keluar dari akun gagal (offline) sesudah data dihapus; diulang saat online. localStorage bisa tidak tersedia. */
+export function tandaiKeluarTertunda() {
+  try {
+    localStorage.setItem(KUNCI_KELUAR_TERTUNDA, "1");
+  } catch {
+    // tanpa localStorage: sesi berakhir sendiri saat kedaluwarsa
+  }
+}
+
+export function adaKeluarTertunda(): boolean {
+  try {
+    return localStorage.getItem(KUNCI_KELUAR_TERTUNDA) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function bersihkanKeluarTertunda() {
+  try {
+    localStorage.removeItem(KUNCI_KELUAR_TERTUNDA);
+  } catch {
+    // abaikan
+  }
+}

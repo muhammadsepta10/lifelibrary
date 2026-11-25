@@ -7,22 +7,26 @@ import { ChevronRight } from "lucide-react";
 import { ButuhKoneksi, kartuCls } from "@/components/app/kelola";
 import { PageHeader } from "@/components/app/page-header";
 import { useLibrary } from "@/components/app/library-provider";
-import { authClient } from "@/lib/auth-client";
+import { KeluarHapusData } from "@/components/app/keluar-hapus";
+import { PasangAplikasi } from "@/components/app/pasang-aplikasi";
+import { authClient, keluarAkun } from "@/lib/auth-client";
 
 export default function LainnyaPage() {
   const router = useRouter();
-  const { library, daftar, online, jumlahCetak } = useLibrary();
+  const { daftar, online, jumlahCetak } = useLibrary();
   const { data: sesi } = authClient.useSession();
   const [bekerja, setBekerja] = useState(false);
 
-  async function keluar(hapusData: boolean) {
+  async function keluar() {
     setBekerja(true);
     try {
-      if (hapusData) await library?.hapusDataPerangkat();
-      await authClient.signOut();
-    } finally {
-      router.replace("/login");
+      await keluarAkun();
+    } catch {
+      // offline: keluar butuh server; tetap di aplikasi, data lokal aman
+      setBekerja(false);
+      return;
     }
+    router.replace("/login");
   }
 
   return (
@@ -63,36 +67,22 @@ export default function LainnyaPage() {
         ].map(({ href, label, butuhKoneksi }) => (
           <Link key={href} href={href} className={`${kartuCls} flex h-14 items-center gap-3 px-4 text-sm font-semibold`}>
             {label}
-            {butuhKoneksi && !online && <span className="ml-auto text-xs font-medium text-ink-muted">Ekspor butuh koneksi</span>}
+            {butuhKoneksi && !online && <ButuhKoneksi className="ml-auto" />}
             <ChevronRight className={`size-5 text-ink-muted ${butuhKoneksi && !online ? "" : "ml-auto"}`} aria-hidden />
           </Link>
         ))}
       </section>
+      <PasangAplikasi />
       <section className="flex flex-col gap-3 p-5">
         <button
           type="button"
           disabled={bekerja}
-          onClick={() => keluar(false)}
+          onClick={() => void keluar()}
           className="h-12 rounded-2xl bg-white text-sm font-semibold shadow-[0_2px_8px_rgba(0,0,0,.08)] disabled:opacity-60"
         >
           Keluar
         </button>
-        <button
-          type="button"
-          disabled={bekerja}
-          onClick={() => {
-            if (
-              confirm(
-                "Hapus semua data di perangkat ini? Perubahan yang belum tersinkron akan hilang.",
-              )
-            ) {
-              void keluar(true);
-            }
-          }}
-          className="h-12 rounded-2xl bg-white text-sm font-semibold text-bahaya shadow-[0_2px_8px_rgba(0,0,0,.08)] disabled:opacity-60"
-        >
-          Keluar & hapus data di perangkat ini
-        </button>
+        <KeluarHapusData />
       </section>
     </>
   );
