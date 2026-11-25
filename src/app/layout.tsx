@@ -35,7 +35,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${literata.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <SerwistProvider swUrl="/serwist/sw.js" disable={process.env.NODE_ENV === "development"}>
+        {/*
+          reloadOnOnline mati: bawaannya memuat ulang halaman saat koneksi pulih, yang membuang isian
+          form dan kartu Sesi Penerimaan yang sedang dikerjakan. Sinkronisasi sudah dipicu event
+          `online` oleh Penjadwal. cacheOnNavigation mati: cangkang disimpan lewat pesan
+          sendiri (lib/sw/simpan-cangkang) ke cache yang benar.
+        */}
+        <SerwistProvider
+          swUrl="/serwist/sw.js"
+          disable={process.env.NODE_ENV === "development"}
+          reloadOnOnline={false}
+          cacheOnNavigation={false}
+        >
           {children}
         </SerwistProvider>
       </body>

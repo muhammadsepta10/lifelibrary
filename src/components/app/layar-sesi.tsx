@@ -425,7 +425,12 @@ function KartuHasil({ kartu, onTinjau, onBuang }: { kartu: KartuScan; onTinjau: 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">{judul}</span>
         <span className="block truncate text-xs text-ink-muted">
-          {kartu.pengarang || (kartu.status === "siap" && !kartu.judul ? "Data belum ada, isi manual" : "")}
+          {kartu.pengarang ||
+            (kartu.status === "menunggu-data"
+              ? "Metadata dicari otomatis saat online"
+              : kartu.status === "siap" && !kartu.judul
+                ? "Data belum ada, isi manual"
+                : "")}
           {kartu.isbn13 && kartu.judul ? ` · ${kartu.isbn13}` : ""}
         </span>
       </span>

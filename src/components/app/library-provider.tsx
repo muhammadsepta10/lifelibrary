@@ -16,6 +16,10 @@ import {
   type PemberitahuanDitimpa,
   type StatusSinkronisasi,
 } from "@/lib/local-library";
+import { adaKeluarTertunda, bersihkanKeluarTertunda } from "@/lib/keluar-hapus-data";
+import { keluarAkun } from "@/lib/auth-client";
+import { cariMetadataIsbn } from "@/lib/sync/fetch-metadata";
+import { simpanCangkangOffline } from "@/lib/sw/simpan-cangkang";
 import { fetchKelolaTransport } from "@/lib/sync/fetch-kelola-transport";
 import { fetchPenyianganTransport } from "@/lib/sync/fetch-penyiangan-transport";
 import { fetchTransport } from "@/lib/sync/fetch-transport";
@@ -23,6 +27,8 @@ import { buatPenjadwal, type KeadaanSinkron } from "@/lib/sync/penjadwal";
 import { Toaster } from "./toaster";
 
 const TOAST_MS = 7_000;
+/** Draf scan "menunggu data": dicoba lagi sesering ini selama masih ada. */
+const PERIODE_DRAF_MS = 30_000;
 
 type Ctx = {
   library: LocalLibrary | null;
@@ -38,6 +44,8 @@ type Ctx = {
   daftar: DaftarLokal | undefined;
   /** Antrean Cetak: `siapDicetak` = "Label siap dicetak". */
   jumlahCetak: JumlahAntreanCetak | undefined;
+  /** Jumlah draf scan yang menunggu metadata (dilengkapi otomatis saat online). */
+  jumlahDrafMenunggu: number;
   /** Peminjaman aktif, terlambat, riwayat; terlambat dihitung ulang saat tanggal berganti. */
   peminjaman: DaftarPeminjaman | undefined;
   /** Jumlah Peminjaman terlambat: badge di nav, chip di Beranda. */
@@ -69,6 +77,24 @@ function getLibrary() {
 
 const noopSubscribe = () => () => {};
 
+function langgananOnline(cb: () => void) {
+  window.addEventListener("online", cb);
+  window.addEventListener("offline", cb);
+  return () => {
+    window.removeEventListener("online", cb);
+    window.removeEventListener("offline", cb);
+  };
+}
+
+/** Status koneksi menurut browser; benar saat browser dimulai offline (tanpa kedip "online"). */
+function useOnline() {
+  return useSyncExternalStore(
+    langgananOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+}
+
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const library = useSyncExternalStore(noopSubscribe, getLibrary, () => null);
   const [koleksiSemua, setKoleksiSemua] = useState<ItemKoleksi[]>();
@@ -76,7 +102,8 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [daftar, setDaftar] = useState<DaftarLokal>();
   const [jumlahCetak, setJumlahCetak] = useState<JumlahAntreanCetak>();
   const [keadaan, setKeadaan] = useState<KeadaanSinkron>({ jenis: "diam" });
-  const [online, setOnline] = useState(true);
+  const online = useOnline();
+  const [jumlahDrafMenunggu, setJumlahDrafMenunggu] = useState(0);
   const [antrean, setAntrean] = useState<DaftarAntrean>();
   const [log, setLog] = useState<LogRow[]>();
   const [peminjaman, setPeminjaman] = useState<DaftarPeminjaman>();
@@ -119,6 +146,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       lib.pantauAntrean(setAntrean),
       lib.pantauLog(setLog),
       lib.pantauJumlahAntreanCetak(setJumlahCetak),
+      lib.pantauJumlahDrafMenunggu(setJumlahDrafMenunggu),
     ];
     const timerToast = new Set<ReturnType<typeof setTimeout>>();
     const p = buatPenjadwal({
@@ -138,19 +166,38 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     });
     penjadwal.current = p;
 
-    const perbaruiOnline = () => setOnline(navigator.onLine);
-    perbaruiOnline();
-    window.addEventListener("online", perbaruiOnline);
-    window.addEventListener("offline", perbaruiOnline);
     void p.mulai(); // saat aplikasi dibuka; juga memasang event `online` dan pemicu berkala
     return () => {
       berhenti.forEach((f) => f());
       p.berhenti();
       timerToast.forEach(clearTimeout);
-      window.removeEventListener("online", perbaruiOnline);
-      window.removeEventListener("offline", perbaruiOnline);
     };
   }, [library, tutupToast]);
+
+  // Online (dibuka online, atau koneksi pulih): simpan cangkang aplikasi untuk offline, dan
+  // selesaikan "Keluar & hapus data" yang tertunda karena tadi offline.
+  useEffect(() => {
+    if (!online) return;
+    void simpanCangkangOffline();
+    if (adaKeluarTertunda()) {
+      void keluarAkun()
+        .then(() => {
+          bersihkanKeluarTertunda();
+          window.location.replace("/login");
+        })
+        .catch(() => {});
+    }
+  }, [online]);
+
+  // Draf scan "menunggu data": dilengkapi lewat Pencarian Metadata begitu online, dan dicoba berkala
+  // selama masih ada yang menunggu.
+  useEffect(() => {
+    if (!library || !online || jumlahDrafMenunggu === 0) return;
+    const jalan = () => void library.lengkapiDrafMenunggu(cariMetadataIsbn);
+    jalan();
+    const timer = setInterval(jalan, PERIODE_DRAF_MS);
+    return () => clearInterval(timer);
+  }, [library, online, jumlahDrafMenunggu]);
 
   // Ada perubahan baru di outbox: kirim begitu online.
   const menunggu = status?.menunggu ?? 0;
@@ -175,11 +222,11 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
-      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
+      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, jumlahDrafMenunggu, kelola, keadaan, online, antrean, log,
       sinkronkan, cobaLagi, peminjaman, jumlahTerlambat, peminjam,
     }),
     [
-      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
+      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, jumlahDrafMenunggu, kelola, keadaan, online, antrean, log,
       sinkronkan, cobaLagi, peminjaman, jumlahTerlambat, peminjam,
     ],
   );

@@ -44,9 +44,10 @@ import {
   type RencanaCetak,
   type TidakBisaDicetak,
 } from "./cetak";
-import type { DrafBuku } from "@/lib/draf-buku";
+import type { DrafBuku, HasilPencarianMetadata } from "@/lib/draf-buku";
 import { bisaSimpanDraf, type BukuDuplikat } from "./draf";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
+import { dariHasil, pencarianPerluMenunggu } from "./keadaan-metadata";
 import { periksaFieldBuku, periksaFieldEksemplar, samaNilai } from "./masukan";
 import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 import { hitungSaranKategori, type MasukanSaran, type SaranKategori } from "./saran-kategori";
@@ -398,6 +399,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         cariBukuByIsbn,
         simpanDraf,
         catatEksemplar,
+        drafMenunggu: {
+          semua: () => db.drafMenunggu.toArray(),
+          baca: async (ids) => (await db.drafMenunggu.bulkGet(ids)).filter((r) => r !== undefined),
+          simpan: async (row) => void (await db.drafMenunggu.put(row)),
+          hapus: (id) => db.drafMenunggu.delete(id),
+        },
         bacaEksemplar: async (ids) =>
           (await db.eksemplar.bulkGet(ids)).flatMap((e) =>
             e ? [{ id: e.id, nomorInduk: e.nomorInduk, menungguSinkron: e.menungguSinkron }] : [],
@@ -405,6 +412,56 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       },
       opsi,
     );
+  }
+
+  const bacaJumlahDrafMenunggu = () => db.drafMenunggu.where("status").equals("menunggu-data").count();
+  /** Jumlah draf scan yang masih menunggu metadata (dicari saat online). */
+  async function jumlahDrafMenunggu(): Promise<number> {
+    await siap;
+    return bacaJumlahDrafMenunggu();
+  }
+
+  let sedangMelengkapi: Promise<{ lengkap: number; masihMenunggu: number }> | null = null;
+
+  /**
+   * Melengkapi draf scan "menunggu data" lewat Pencarian Metadata; dipanggil
+   * saat online (aplikasi dibuka, event `online`, berkala). Yang berhasil
+   * (ditemukan, atau pasti tidak ada) menjadi "Siap ditinjau" dan muncul di
+   * Sesi Penerimaan yang terbuka lewat `liveQuery`. Tanpa koneksi, login habis,
+   * atau semua sumber tak terjangkau, draf tetap menunggu tanpa galat. Satu
+   * proses pada satu waktu; pemanggil yang datang saat itu ikut hasilnya.
+   */
+  function lengkapiDrafMenunggu(
+    cariMetadata: (isbn13: string) => Promise<HasilPencarianMetadata>,
+  ): Promise<{ lengkap: number; masihMenunggu: number }> {
+    sedangMelengkapi ??= (async () => {
+      await siap;
+      const menunggu = (await db.drafMenunggu.where("status").equals("menunggu-data").toArray()).sort(
+        (a, b) => a.dicatat - b.dicatat,
+      );
+      let lengkap = 0;
+      for (const row of menunggu) {
+        let hasil: HasilPencarianMetadata;
+        try {
+          hasil = await cariMetadata(row.isbn13);
+        } catch (e) {
+          if (pencarianPerluMenunggu(e)) break; // masih offline atau login habis: sisanya tidak akan berhasil juga
+          continue; // galat server untuk satu ISBN: coba lagi pada putaran berikutnya
+        }
+        if (!hasil.ditemukan && hasil.semuaGalat) continue;
+        const keadaan = dariHasil(row.isbn13, hasil);
+        // Kartu bisa saja sudah dibuang/disimpan selagi mencari; jangan menghidupkannya lagi.
+        const diperbarui = await db.drafMenunggu
+          .where("id")
+          .equals(row.id)
+          .modify({ ...keadaan, status: "siap" });
+        if (diperbarui > 0) lengkap++;
+      }
+      return { lengkap, masihMenunggu: await bacaJumlahDrafMenunggu() };
+    })().finally(() => {
+      sedangMelengkapi = null;
+    });
+    return sedangMelengkapi;
   }
 
   /** Kontributor yang sudah dikenal di perangkat, menurut nama ternormalisasi. */
@@ -1369,8 +1426,16 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     };
   }
 
-  /** "Keluar & hapus data di perangkat ini" (ADR 0004). */
+  /** Yang akan hilang bila data di perangkat dihapus: bahan pesan konfirmasi "Keluar & hapus data". */
+  async function ringkasanDataPerangkat(): Promise<{ belumTerkirim: number; drafMenunggu: number }> {
+    await siap;
+    const status = await bacaStatus();
+    return { belumTerkirim: status.menunggu + status.ditolak, drafMenunggu: await bacaJumlahDrafMenunggu() };
+  }
+
+  /** "Keluar & hapus data di perangkat ini" (ADR 0004): menghapus basis data IndexedDB. */
   async function hapusDataPerangkat() {
+    await siap.catch(() => {});
     await db.delete();
   }
 
@@ -1421,6 +1486,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     logPerubahan,
     sinkronkan,
     hapusDataPerangkat,
+    ringkasanDataPerangkat,
+    jumlahDrafMenunggu,
+    lengkapiDrafMenunggu,
+    pantauJumlahDrafMenunggu: (cb: (jumlah: number) => void) => pantau(bacaJumlahDrafMenunggu, cb),
     /** Pemantau reaktif untuk UI; mengembalikan fungsi berhenti. */
     pantauDetailBuku: (bukuId: string, cb: (detail: DetailBuku | null) => void) =>
       pantau(() => bacaDetailBuku(bukuId), cb),

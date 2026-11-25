@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRightLeft, CloudOff, ClockArrowUp, House, Library, Menu, Plus, Tag } from "lucide-react";
+import { ArrowRightLeft, CloudOff, ClockArrowUp, House, KeyRound, Library, Menu, Plus, Tag } from "lucide-react";
+import { tentukanStrip } from "@/lib/status-aplikasi";
 import { cn } from "@/lib/utils";
 import { useLibrary } from "./library-provider";
 
@@ -27,7 +28,8 @@ function aktif(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { status, online, jumlahCetak, jumlahTerlambat } = useLibrary();
+  const { status, online, jumlahCetak, jumlahTerlambat, keadaan } = useLibrary();
+  const strip = tentukanStrip({ online, keadaanSinkron: keadaan.jenis });
   const terlambat = jumlahTerlambat ?? 0;
   const menunggu = status?.menunggu ?? 0;
   const gagal = status?.ditolak ?? 0;
@@ -90,13 +92,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
       </aside>
 
-      {!online && (
-        <div role="status" className="bg-offline px-5 py-1.5 text-xs font-semibold text-offline-fg">
-          <CloudOff className="mr-1.5 inline size-3.5" aria-hidden />
-          {menunggu > 0
-            ? `Offline — ${menunggu} perubahan menunggu dikirim`
-            : "Offline — perubahan disimpan di perangkat"}
-        </div>
+      {strip.map((st) =>
+        st.jenis === "offline" ? (
+          <div
+            key="offline"
+            role="status"
+            data-testid="strip-offline"
+            className="bg-offline px-5 py-1.5 text-xs font-semibold text-offline-fg"
+          >
+            <CloudOff className="mr-1.5 inline size-3.5" aria-hidden />
+            {st.teks}
+          </div>
+        ) : (
+          <div
+            key="login"
+            role="status"
+            data-testid="strip-login"
+            className="bg-menunggu px-5 py-1.5 text-xs font-semibold text-menunggu-fg"
+          >
+            <KeyRound className="mr-1.5 inline size-3.5" aria-hidden />
+            {st.teks}{" "}
+            <Link href={st.href} className="underline">
+              Masuk lagi
+            </Link>
+          </div>
+        ),
       )}
 
       <main className="flex flex-1 flex-col pb-28 lg:pb-10">{children}</main>

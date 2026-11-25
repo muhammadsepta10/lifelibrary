@@ -34,7 +34,9 @@ type Target = Pick<EventTarget, "addEventListener" | "removeEventListener">;
  * aplikasi dibuka (`mulai`), saat event `online`, berkala, dan oleh perubahan
  * lokal (`picu`). Setelah gagal, percobaan berikutnya menunggu dengan backoff
  * eksponensial (2 dtk, 4 dtk, ... maks 5 menit); pemicu otomatis tidak
- * melewatinya. Hanya `picu({ paksa: true })` (tombol "Sinkronkan sekarang") dan
+ * melewatinya. Sesi login yang habis (401) menghentikan semua pemicu otomatis,
+ * data lokal tetap bisa dipakai, sampai aplikasi dibuka lagi setelah login
+ * ulang. Hanya `picu({ paksa: true })` (tombol "Sinkronkan sekarang") dan
  * event `online` (koneksi pulih) yang boleh mendahului.
  */
 export function buatPenjadwal(opts: {
@@ -55,12 +57,14 @@ export function buatPenjadwal(opts: {
   let berhenti = true;
   let gagalBerturut = 0;
   let tidakSebelum = 0;
+  /** Sesi login habis: pemicu otomatis diam sampai login ulang (aplikasi dibuka lagi) atau dipicu paksa. */
+  let menungguLogin = false;
   let batalCobaLagi: (() => void) | undefined;
   let batalBerkala: (() => void) | undefined;
 
   async function picu({ paksa = false }: { paksa?: boolean } = {}) {
     if (berjalan) return;
-    if (!paksa && jam.sekarang() < tidakSebelum) return;
+    if (!paksa && (menungguLogin || jam.sekarang() < tidakSebelum)) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     batalCobaLagi?.();
     berjalan = true;
@@ -69,10 +73,12 @@ export function buatPenjadwal(opts: {
       const hasil = await opts.library.sinkronkan(opts.transport);
       gagalBerturut = 0;
       tidakSebelum = 0;
+      menungguLogin = false;
       opts.onKeadaan({ jenis: "selesai", pada: jam.sekarang() });
       if (hasil.ditimpa.length > 0) opts.onDitimpa?.(hasil.ditimpa);
     } catch (e) {
       if (e instanceof LoginDiperlukanError) {
+        menungguLogin = true;
         opts.onKeadaan({ jenis: "perlu-login" });
       } else {
         gagalBerturut++;
@@ -108,6 +114,7 @@ export function buatPenjadwal(opts: {
   async function mulai() {
     if (!berhenti) return;
     berhenti = false;
+    menungguLogin = false; // aplikasi dibuka lagi: mungkin sudah login ulang
     target?.addEventListener("online", onOnline);
     jadwalkanBerkala();
     await picu();
