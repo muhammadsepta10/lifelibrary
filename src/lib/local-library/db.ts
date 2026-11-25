@@ -89,6 +89,8 @@ export type DrafMenungguRow = {
   sumber: StatusSumber[];
   catatan: string | null;
   bisaCobaLagi: boolean;
+  /** Cadangan judul boleh ditawarkan; tidak ada pada draf yang tersimpan sebelum fitur ini. */
+  cadanganJudul?: boolean;
   /** Epoch milidetik, jam perangkat; urutan kartu saat dimuat ulang. */
   dicatat: number;
 };

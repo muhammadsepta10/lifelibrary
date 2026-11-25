@@ -10,6 +10,7 @@ import { useLibrary } from "@/components/app/library-provider";
 import { PageHeader } from "@/components/app/page-header";
 import { PilihKategori } from "@/components/app/pilih-kategori";
 import { drafKosong, type DrafBuku, type StatusSumber } from "@/lib/draf-buku";
+import { dariHasil } from "@/lib/local-library/keadaan-metadata";
 import { normalisasiIsbn, ValidasiError, type BukuDuplikat } from "@/lib/local-library";
 import { cariMetadataIsbn } from "@/lib/sync/fetch-metadata";
 import { LoginDiperlukanError } from "@/lib/sync/fetch-transport";
@@ -25,6 +26,8 @@ type Tahap =
       /** Pesan ramah di atas form: tidak ditemukan, atau sumber tak terjangkau. */
       catatan: string | null;
       bisaCobaLagi: boolean;
+      /** ISBN tidak ditemukan padahal sumber terjangkau: pencarian cadangan lewat judul boleh ditawarkan. */
+      cadanganJudul: boolean;
     };
 
 export default function TambahIsbnPage() {
@@ -47,18 +50,14 @@ export default function TambahIsbnPage() {
     setTahap({ jenis: "mencari", isbn13 });
     try {
       const hasil = await cariMetadataIsbn(isbn13);
-      if (hasil.ditemukan) {
-        setTahap({ jenis: "tinjau", draf: hasil.draf, sumber: hasil.sumber, catatan: null, bisaCobaLagi: false });
-        return;
-      }
+      const keadaan = dariHasil(isbn13, hasil);
       setTahap({
         jenis: "tinjau",
-        draf: drafKosong(isbn13),
-        sumber: hasil.sumber,
-        bisaCobaLagi: hasil.semuaGalat,
-        catatan: hasil.semuaGalat
-          ? "Sumber metadata tidak bisa dihubungi. Coba lagi sebentar lagi, atau isi datanya manual."
-          : `ISBN ${isbn13} belum ada di Open Library, Google Books, maupun Library of Congress. Isi datanya manual, ISBN sudah terisi.`,
+        draf: keadaan.draf,
+        sumber: keadaan.sumber,
+        catatan: keadaan.catatan,
+        bisaCobaLagi: keadaan.bisaCobaLagi,
+        cadanganJudul: keadaan.cadanganJudul,
       });
     } catch (e) {
       const offline = e instanceof TypeError;
@@ -67,6 +66,7 @@ export default function TambahIsbnPage() {
         draf: drafKosong(isbn13),
         sumber: [],
         bisaCobaLagi: true,
+        cadanganJudul: false,
         catatan: e instanceof LoginDiperlukanError
           ? "Sesi login habis. Masuk lagi untuk mencari metadata, atau isi datanya manual."
           : offline
