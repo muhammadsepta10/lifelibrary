@@ -8,6 +8,7 @@ import {
   type KontributorDto,
 } from "./buku-fields";
 import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
+import type { PenyianganDto } from "./penyiangan-protocol";
 
 export type { AturanKategoriDto, KategoriDto, LokasiDto };
 
@@ -107,6 +108,8 @@ export type EksemplarDto = FieldEksemplar & {
   tahunPencatatan: number;
   waktuDicatat: string;
   status: "aktif" | "keluar";
+  /** Terisi bila `status` = `keluar` (Penyiangan). */
+  penyiangan: PenyianganDto | null;
   /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Antrean Cetak memakainya. */
   perluCetak: boolean;
 };
