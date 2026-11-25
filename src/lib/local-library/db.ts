@@ -51,6 +51,20 @@ export type OutboxRow = {
   ditolak?: string;
 };
 
+/** Catatan field yang ditimpa perubahan dari perangkat lain (log halaman Sinkronisasi). */
+export type LogRow = {
+  id: string;
+  /** Epoch milidetik, jam perangkat. */
+  pada: number;
+  bukuId: string;
+  eksemplarId: string | null;
+  judul: string;
+  field: string;
+  label: string;
+  /** Teks polos, mis. "Penerbit di Laut Bercerita diperbarui dari perangkat lain". */
+  pesan: string;
+};
+
 export type MetaRow = { key: string; value: string | null };
 
 export const bukuKosong = (): Omit<FieldBuku, "judul"> => ({
@@ -86,6 +100,7 @@ export class LocalDb extends Dexie {
   eksemplar!: EntityTable<EksemplarRow, "id">;
   outbox!: EntityTable<OutboxRow, "seq">;
   meta!: EntityTable<MetaRow, "key">;
+  log!: EntityTable<LogRow, "id">;
 
   constructor(name: string) {
     super(name);
@@ -114,5 +129,6 @@ export class LocalDb extends Dexie {
           .toCollection()
           .modify((e) => Object.assign(e, eksemplarKosong(), { ...e }));
       });
+    this.version(4).stores({ log: "id, pada" });
   }
 }

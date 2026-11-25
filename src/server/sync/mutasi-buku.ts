@@ -4,7 +4,9 @@ import { gabungKontributor, normalisasiNama, periksaPengarangUtama } from "@/lib
 import type { Mutasi } from "@/lib/sync-protocol";
 import { buku, bukuKontributor, kontributor } from "@/server/db/schema";
 import { sekarangServer } from "@/server/kelola/galat";
-import { diterima, ditolak, tandaiWaktu, type HasilTanpaId } from "./hasil";
+import type { FieldDitimpa } from "@/lib/sync-protocol";
+import { bagiMenangKalah, diterima, ditolak, type HasilTanpaId } from "./hasil";
+import { muatKontributor } from "./kontributor";
 import type { Tx } from "./tx";
 
 type Kontributor = Extract<Mutasi, { jenis: "buku.tambah" }>["buku"]["kontributor"];
@@ -88,31 +90,53 @@ export async function ubahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.ubah" }
   if (!ada) return ditolak("Buku tidak ditemukan di server");
 
   const { kontributor: daftar, ...field } = m.perubahan;
-  if (field.isbn13 && (await isbnDipakaiLain(tx, field.isbn13, m.bukuId))) {
-    return ditolak("ISBN sudah tercatat pada Buku lain");
-  }
   if (daftar) {
     const tolak = galatKontributor(daftar);
     if (tolak) return tolak;
   }
 
+  // Per field, yang terbaru menang (ADR 0004).
+  const disebut: string[] = NAMA_FIELD_BUKU.filter((key) => field[key] !== undefined);
+  if (daftar) disebut.push("kontributor");
+  const { menang, kalah, fieldWaktu } = bagiMenangKalah(ada.fieldWaktu, disebut, m.waktuUbah);
+
+  if (field.isbn13 && menang.includes("isbn13") && (await isbnDipakaiLain(tx, field.isbn13, m.bukuId))) {
+    return ditolak("ISBN sudah tercatat pada Buku lain");
+  }
+
   const set: Record<string, unknown> = {};
-  const disebut: string[] = [];
   for (const key of NAMA_FIELD_BUKU) {
     const nilai = field[key];
-    if (nilai === undefined) continue;
-    disebut.push(key);
+    if (nilai === undefined || !menang.includes(key)) continue;
     set[key] = key === "subjek" ? (nilai ?? []) : (nilai ?? null);
   }
-  if (daftar) {
-    await simpanKontributor(tx, m.bukuId, daftar);
-    disebut.push("kontributor");
-  }
-  if (disebut.length > 0) {
+  if (daftar && menang.includes("kontributor")) await simpanKontributor(tx, m.bukuId, daftar);
+  if (menang.length > 0) {
     await tx
       .update(buku)
-      .set({ ...set, fieldWaktu: tandaiWaktu(ada.fieldWaktu, disebut, m.waktuUbah), updatedAt: sekarangServer })
+      .set({ ...set, fieldWaktu, updatedAt: sekarangServer })
       .where(eq(buku.id, m.bukuId));
   }
-  return diterima();
+
+  // Field yang kalah dari perubahan lebih baru; dilaporkan bila nilainya memang berbeda.
+  const ditimpa: FieldDitimpa[] = [];
+  for (const key of kalah) {
+    if (key === "kontributor") {
+      const kini = (await muatKontributor(tx, [m.bukuId])).get(m.bukuId) ?? [];
+      if (!sama(kunciKontributor(kini), kunciKontributor(gabungKontributor(daftar!)))) {
+        ditimpa.push({ field: key, nilai: kini });
+      }
+      continue;
+    }
+    const kini = ada[key as keyof typeof ada];
+    const diminta = key === "subjek" ? (field.subjek ?? []) : (field[key as keyof typeof field] ?? null);
+    if (!sama(kini, diminta)) ditimpa.push({ field: key, nilai: kini });
+  }
+  return diterima({ ditimpa });
 }
+
+const sama = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** Kontributor dibandingkan menurut nama ternormalisasi, peran, dan Pengarang Utama. */
+const kunciKontributor = (daftar: { nama: string; peran: string; utama: boolean }[]) =>
+  daftar.map((k) => [normalisasiNama(k.nama), k.peran, k.utama]);
