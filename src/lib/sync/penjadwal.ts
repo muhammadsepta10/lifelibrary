@@ -45,6 +45,8 @@ export function buatPenjadwal(opts: {
   onKeadaan: (k: KeadaanSinkron) => void;
   /** Dipanggil bila ada field yang ditimpa perubahan dari perangkat lain. */
   onDitimpa?: (daftar: PemberitahuanDitimpa[]) => void;
+  /** Dipanggil setelah Sinkronisasi (otomatis atau manual) yang mengirim sedikitnya satu perubahan. */
+  onDikirim?: (jumlah: number) => void;
   jam?: Jam;
   target?: Target;
   periodeMs?: number;
@@ -75,6 +77,7 @@ export function buatPenjadwal(opts: {
       tidakSebelum = 0;
       menungguLogin = false;
       opts.onKeadaan({ jenis: "selesai", pada: jam.sekarang() });
+      if (hasil.dikirim > 0) opts.onDikirim?.(hasil.dikirim);
       if (hasil.ditimpa.length > 0) opts.onDitimpa?.(hasil.ditimpa);
     } catch (e) {
       if (e instanceof LoginDiperlukanError) {

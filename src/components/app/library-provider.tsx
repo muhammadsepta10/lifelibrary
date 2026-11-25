@@ -24,7 +24,7 @@ import { fetchKelolaTransport } from "@/lib/sync/fetch-kelola-transport";
 import { fetchPenyianganTransport } from "@/lib/sync/fetch-penyiangan-transport";
 import { fetchTransport } from "@/lib/sync/fetch-transport";
 import { buatPenjadwal, type KeadaanSinkron } from "@/lib/sync/penjadwal";
-import { Toaster } from "./toaster";
+import { Toaster, type PesanToast } from "./toaster";
 
 const TOAST_MS = 7_000;
 /** Draf scan "menunggu data": dicoba lagi sesering ini selama masih ada. */
@@ -112,6 +112,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   // Berganti saat tanggal perangkat berganti: pembaca terlambat dipasang ulang (tanggal bukan data di Dexie).
   const [hari, setHari] = useState(() => tanggalLokal(new Date()));
   const [toasts, setToasts] = useState<PemberitahuanDitimpa[]>([]);
+  const [infoToasts, setInfoToasts] = useState<PesanToast[]>([]);
   const penjadwal = useRef<ReturnType<typeof buatPenjadwal> | null>(null);
 
   useEffect(() => {
@@ -134,7 +135,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     return () => berhenti.forEach((f) => f());
   }, [library, hari]);
 
-  const tutupToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const tutupToast = useCallback((id: string) => {
+    setToasts((t) => t.filter((x) => x.id !== id));
+    setInfoToasts((t) => t.filter((x) => x.id !== id));
+  }, []);
 
   useEffect(() => {
     const lib = library;
@@ -153,6 +157,15 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       library: lib,
       transport: fetchTransport,
       onKeadaan: setKeadaan,
+      onDikirim: (jumlah) => {
+        const id = crypto.randomUUID();
+        setInfoToasts((t) => [...t, { id, teks: `${jumlah} perubahan terkirim` }]);
+        const timer = setTimeout(() => {
+          timerToast.delete(timer);
+          tutupToast(id);
+        }, TOAST_MS);
+        timerToast.add(timer);
+      },
       onDitimpa: (daftar) => {
         setToasts((t) => [...t, ...daftar]);
         for (const n of daftar) {
@@ -233,7 +246,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   return (
     <LibraryContext.Provider value={value}>
       {children}
-      <Toaster daftar={toasts} onTutup={tutupToast} />
+      <Toaster daftar={toasts} info={infoToasts} onTutup={tutupToast} />
     </LibraryContext.Provider>
   );
 }

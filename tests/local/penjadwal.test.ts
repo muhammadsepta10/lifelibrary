@@ -158,6 +158,37 @@ describe("Penjadwal Sinkronisasi", () => {
     penjadwal.berhenti();
   });
 
+  it("memberi tahu jumlah perubahan yang terkirim hanya bila ada yang terkirim", async () => {
+    const lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}` });
+    const transport: SyncTransport = {
+      push: async (req) => ({ hasil: req.mutasi.map((m) => ({ id: m.id, status: "diterima" as const })) }),
+      pull: async () => KOSONG,
+    };
+    const dikirim = vi.fn();
+    const { jam } = jamBuatan();
+    const penjadwal = buatPenjadwal({
+      library: lib,
+      transport,
+      onKeadaan: () => {},
+      onDikirim: dikirim,
+      jam,
+      target: new EventTarget(),
+    });
+
+    await penjadwal.mulai();
+    expect(dikirim).not.toHaveBeenCalled(); // tidak ada yang dikirim: tidak ada toast
+
+    await lib.tambahBuku({
+      judul: "Laut Bercerita",
+      kontributor: [{ nama: "Leila S. Chudori", utama: true }],
+      eksemplar: { kategoriId: FIK.id },
+    });
+    await penjadwal.picu();
+
+    expect(dikirim).toHaveBeenCalledExactlyOnceWith(2); // Buku + Eksemplar
+    penjadwal.berhenti();
+  });
+
   it("memberi tahu pemberitahuan field yang ditimpa dari hasil Sinkronisasi", async () => {
     const lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}` });
     const { bukuId } = await lib.tambahBuku({
