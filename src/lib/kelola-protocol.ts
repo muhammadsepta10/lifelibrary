@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TemplateLabel } from "./label/template-label";
 
 /**
  * Kontrak pengelolaan Kategori, Lokasi, dan Aturan Kategori (ADR 0004: hanya
@@ -123,4 +124,6 @@ export type KelolaTransport = {
   kategori: Perintah<KategoriBaru, KategoriUbah, KategoriDto>;
   lokasi: Perintah<LokasiBaru, LokasiUbah, LokasiDto>;
   aturanKategori: Perintah<AturanBaru, AturanUbah, AturanKategoriDto>;
+  /** Template Label: satu per koleksi; menyimpan menggantikan yang lama. */
+  templateLabel: { simpan(input: TemplateLabel): Promise<TemplateLabel> };
 };

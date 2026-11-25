@@ -29,6 +29,7 @@ const server: KelolaTransport = {
     ubah: nope,
     hapus: nope,
   },
+  templateLabel: { simpan: nope },
 };
 function nope(): never {
   throw new Error("tidak dipakai");

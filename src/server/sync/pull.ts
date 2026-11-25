@@ -1,6 +1,7 @@
 import { and, asc, eq, gt, notInArray, or, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { aturanKategori, buku, eksemplar, kategori, lokasi } from "@/server/db/schema";
+import { aturanKategori, buku, eksemplar, kategori, lokasi, templateLabel } from "@/server/db/schema";
+import { templateDariRow } from "@/server/kelola/template-label";
 import type { Db } from "@/server/db/types";
 import { eksemplarDto } from "./dto";
 import type { AturanKategoriDto, BukuDto, EksemplarDto, KategoriDto, LokasiDto, PullResponse } from "@/lib/sync-protocol";
@@ -41,6 +42,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     .from(aturanKategori)
     .where(baru(aturanKategori))
     .orderBy(asc(aturanKategori.updatedAt));
+  const templateRows = await db.select().from(templateLabel).where(baru(templateLabel));
   const bukuRows = await db.select().from(buku).where(baru(buku)).orderBy(asc(buku.updatedAt));
   const eksemplarRows = await db
     .select()
@@ -90,7 +92,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
   }));
   const eksemplarDtos: EksemplarDto[] = eksemplarRows.map(eksemplarDto);
 
-  const semua = [...kategoriRows, ...lokasiRows, ...aturanRows, ...bukuRows, ...eksemplarRows];
+  const semua = [...kategoriRows, ...lokasiRows, ...aturanRows, ...templateRows, ...bukuRows, ...eksemplarRows];
   const terbaru = semua.reduce<number | null>((max, r) => {
     const t = r.updatedAt.getTime();
     return max === null || t > max ? t : max;
@@ -109,6 +111,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     kategori: kategoriDto,
     lokasi: lokasiDto,
     aturanKategori: aturanDto,
+    templateLabel: templateRows[0] ? templateDariRow(templateRows[0]) : null,
     buku: bukuDto,
     eksemplar: eksemplarDtos,
   };

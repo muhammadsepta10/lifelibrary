@@ -5,7 +5,7 @@ import type { PullResponse, SyncTransport } from "@/lib/sync-protocol";
 import { buatPenjadwal, type Jam, type KeadaanSinkron } from "@/lib/sync/penjadwal";
 
 const FIK = PRESET_KATEGORI.find((k) => k.kode === "FIK")!;
-const KOSONG: PullResponse = { kursor: null, kategori: [], lokasi: [], aturanKategori: [], buku: [], eksemplar: [] };
+const KOSONG: PullResponse = { kursor: null, kategori: [], lokasi: [], aturanKategori: [], templateLabel: null, buku: [], eksemplar: [] };
 
 /** Jam buatan: waktu hanya maju lewat `maju`, timer yang jatuh tempo dijalankan berurutan. */
 function jamBuatan() {
