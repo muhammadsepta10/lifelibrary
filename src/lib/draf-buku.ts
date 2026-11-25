@@ -60,6 +60,11 @@ export type DrafBuku = {
   kelasDdc: string | null;
   /** Sumber tiap field yang terisi. Subjek bisa berasal dari beberapa sumber. */
   sumber: Partial<Record<FieldDraf, SumberMetadata[]>>;
+  /**
+   * Field yang terisi dari Kandidat (edisi lain, perlu dicek Pemilik). Tidak
+   * ada pada draf yang tersimpan sebelum fitur pencarian judul.
+   */
+  dariKandidat?: FieldDraf[];
 };
 
 export type StatusSumber = {
@@ -135,3 +140,42 @@ export function drafKosong(isbn13: string): DrafBuku {
 
 /** Alamat gambar sampul yang dilayani aplikasi (hanya Pemilik yang login). */
 export const urlSampul = (kunci: string) => `/api/covers/${kunci}`;
+
+const MAKS_SUBJEK = 20;
+
+const kosong = (nilai: unknown) => nilai === null || nilai === undefined || nilai === "" || (Array.isArray(nilai) && nilai.length === 0);
+
+/**
+ * Menerapkan Kandidat ke draf: hanya field yang masih kosong yang diisi,
+ * isian Pemilik tidak pernah ditimpa. ISBN draf (hasil scan) dan sampul tidak
+ * disentuh. Field yang terisi dicatat di `sumber` dan `dariKandidat`.
+ */
+export function terapkanKandidat(draf: DrafBuku, kandidat: Kandidat): DrafBuku {
+  const hasil: DrafBuku = { ...draf, sumber: { ...draf.sumber } };
+  const terisi: FieldDraf[] = [];
+  const isi = <K extends Exclude<FieldDraf, "sampul"> & keyof Kandidat & keyof DrafBuku>(field: K, nilai: Kandidat[K]) => {
+    if (kosong(nilai) || !kosong(draf[field])) return;
+    (hasil as Record<string, unknown>)[field] = nilai;
+    hasil.sumber[field] = [kandidat.sumber];
+    terisi.push(field);
+  };
+
+  isi("judul", kandidat.judul);
+  isi("pengarang", kandidat.pengarang);
+  isi("penerbit", kandidat.penerbit);
+  isi("kota", kandidat.kota);
+  isi("tahun", kandidat.tahun);
+  isi("edisi", kandidat.edisi);
+  isi("seri", kandidat.seri);
+  isi("jilid", kandidat.jilid);
+  isi("penerjemah", kandidat.penerjemah);
+  isi("editor", kandidat.editor);
+  isi("halaman", kandidat.halaman);
+  isi("bahasa", kandidat.bahasa);
+  isi("sinopsis", kandidat.sinopsis);
+  isi("subjek", kandidat.subjek?.slice(0, MAKS_SUBJEK));
+  isi("kelasDdc", kandidat.kelasDdc);
+
+  if (terisi.length) hasil.dariKandidat = [...new Set([...(draf.dariKandidat ?? []), ...terisi])];
+  return hasil;
+}
