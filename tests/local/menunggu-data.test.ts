@@ -170,6 +170,32 @@ describe("draf 'menunggu data' dilengkapi otomatis setelah online", () => {
     expect(kartu.catatan).toContain("belum ada");
   });
 
+  it("dilengkapi online dan ternyata tidak ditemukan: kartu Siap ditinjau dengan cadangan judul, juga di sesi berikutnya", async () => {
+    const sesi = await lib.mulaiSesiPenerimaan({ cariMetadata: offline });
+    await pindaiSelesai(sesi, ISBN_A);
+    expect((await sesi.kartu())[0].cadanganJudul).toBe(false);
+
+    await lib.lengkapiDrafMenunggu(async (isbn13) => ({
+      ditemukan: false,
+      isbn13,
+      sumber: [{ sumber: "loc", status: "kosong" }],
+      semuaGalat: false,
+    }));
+
+    expect(await sesi.kartu()).toMatchObject([{ status: "siap", cadanganJudul: true }]);
+    const sesiBaru = await buka().mulaiSesiPenerimaan({ cariMetadata: offline });
+    expect(await sesiBaru.kartu()).toMatchObject([{ status: "siap", cadanganJudul: true }]);
+  });
+
+  it("dilengkapi online dan ditemukan: tanpa cadangan judul", async () => {
+    const sesi = await lib.mulaiSesiPenerimaan({ cariMetadata: offline });
+    await pindaiSelesai(sesi, ISBN_A);
+
+    await lib.lengkapiDrafMenunggu(online);
+
+    expect(await sesi.kartu()).toMatchObject([{ status: "siap", cadanganJudul: false }]);
+  });
+
   it("semua sumber tak terjangkau: belum bisa disimpulkan, tetap menunggu", async () => {
     const sesi = await lib.mulaiSesiPenerimaan({ cariMetadata: offline });
     await pindaiSelesai(sesi, ISBN_A);
