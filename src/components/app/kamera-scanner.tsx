@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { bukaKameraPindai } from "@/lib/kamera-pindai";
 import { locateFileZxing } from "@/lib/zxing-lokal";
 
 /**
@@ -77,10 +78,7 @@ export function KameraScanner({
     async function mulai() {
       lapor({ jenis: "memulai" });
       try {
-        aliran = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
+        aliran = await bukaKameraPindai(navigator.mediaDevices);
       } catch (e) {
         if (!batal) lapor({ jenis: "galat", pesan: pesanKamera(e) });
         return;
