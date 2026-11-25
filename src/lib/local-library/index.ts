@@ -46,6 +46,7 @@ import {
   type TidakBisaDicetak,
 } from "./cetak";
 import type { DrafBuku, HasilPencarianMetadata } from "@/lib/draf-buku";
+import { buatBuang } from "./buang";
 import { bisaSimpanDraf, type BukuDuplikat } from "./draf";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
 import { dariHasil, pencarianPerluMenunggu } from "./keadaan-metadata";
@@ -62,6 +63,7 @@ import {
 } from "./peminjaman";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
+export { TidakBisaDibuangError } from "./buang";
 export type { AturanKategoriRow, KategoriRow, LogRow, LokasiRow } from "./db";
 export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 export { hitungGrid, TEMPLATE_LABEL_BAWAAN, type GridTemplate, type TemplateLabel };
@@ -987,6 +989,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       });
   }
 
+  const buangan = buatBuang({
+    db,
+    ringkasan,
+    lupakanKursor: async () => void (await db.meta.delete(META_KURSOR)),
+  });
+
   const bacaLog = () => db.log.orderBy("pada").reverse().toArray();
   async function logPerubahan(): Promise<LogRow[]> {
     await siap;
@@ -1210,6 +1218,17 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return hasil;
   }
 
+  /** Eksemplar dan perubahan yang menunggu untuk Buku lokal `lama` dialihkan ke Buku `baru` di server. */
+  async function gantiIdBuku(lama: string, baru: string) {
+    await db.eksemplar.where("bukuId").equals(lama).modify({ bukuId: baru });
+    await db.outbox
+      .filter((o) => (o.mutasi.jenis === "eksemplar.catat" && o.mutasi.eksemplar.bukuId === lama) || (o.mutasi.jenis === "buku.ubah" && o.mutasi.bukuId === lama))
+      .modify((o) => {
+        if (o.mutasi.jenis === "eksemplar.catat") o.mutasi.eksemplar.bukuId = baru;
+        else if (o.mutasi.jenis === "buku.ubah") o.mutasi.bukuId = baru;
+      });
+  }
+
   /**
    * Kirim outbox (push) lalu ambil perubahan baru (pull). Melempar kalau
    * transport gagal; outbox tetap utuh dan bisa dikirim ulang dengan aman
@@ -1220,6 +1239,8 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     let dikirim = 0;
     let ditolak = 0;
     const ditimpa: PemberitahuanDitimpa[] = [];
+    /** Buku lokal yang digantikan Buku di server karena ISBN sama (ADR 0006): id lokal -> id server. */
+    const bukuDiganti = new Map<string, string>();
     for (;;) {
       const batch = (await db.outbox.orderBy("seq").toArray())
         .filter((o) => !o.ditolak)
@@ -1243,6 +1264,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
             ditolak++;
             continue;
           }
+          if (entri.mutasi.jenis === "buku.tambah" && h.bukuId && h.bukuId !== entri.mutasi.buku.id) {
+            await gantiIdBuku(entri.mutasi.buku.id, h.bukuId);
+            bukuDiganti.set(entri.mutasi.buku.id, h.bukuId);
+          }
           if (h.eksemplarId && h.nomorInduk) {
             await db.eksemplar.update(h.eksemplarId, { nomorInduk: h.nomorInduk, menungguSinkron: false });
           }
@@ -1254,6 +1279,8 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     }
     const kursor = (await db.meta.get(META_KURSOR))?.value ?? null;
     await terapkanPull(await transport.pull(kursor));
+    // Buku lokal yang digantikan dibuang setelah Buku di server tiba lewat pull.
+    for (const [lama, baru] of bukuDiganti) if (await db.buku.get(baru)) await db.buku.delete(lama);
     return { dikirim, ditolak, ditimpa };
   }
 
@@ -1528,6 +1555,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     statusSinkronisasi,
     daftarAntrean,
     cobaLagi,
+    /** Teks daftar perubahan yang ikut hilang bila perubahan yang Gagal terkirim ini dibuang. */
+    pratinjauBuang: sesudahSiap(buangan.pratinjau),
+    /** Membuang perubahan yang Gagal terkirim beserta yang bergantung padanya; salinan lokal dikembalikan sama dengan server. */
+    buang: sesudahSiap(buangan.buang),
     logPerubahan,
     sinkronkan,
     hapusDataPerangkat,
