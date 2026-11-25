@@ -974,12 +974,25 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return bacaLog();
   }
 
-  const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori, db.meta];
+  const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori, db.meta, db.eksemplar];
 
   /** Tulis perubahan daftar; yang bertanda `dihapus` dibuang dari salinan lokal. */
   async function tulisDaftar(p: PerubahanDaftar) {
     const kategori = p.kategori ?? [];
     const hapusKategori = kategori.filter((k) => k.dihapus).map((k) => k.id);
+    // Kode Kategori ada di Nomor Panggil: kalau berganti, Label semua Eksemplar
+    // aktifnya usang dan mereka masuk Antrean Cetak lagi. Nomor Induk tetap (ADR 0001).
+    const kodeLama = new Map((await db.kategori.bulkGet(kategori.map((k) => k.id))).map((k) => [k?.id, k?.kode]));
+    const kodeBerganti = kategori
+      .filter((k) => !k.dihapus && kodeLama.get(k.id) !== undefined && kodeLama.get(k.id) !== k.kode)
+      .map((k) => k.id);
+    if (kodeBerganti.length > 0) {
+      await db.eksemplar
+        .where("kategoriId")
+        .anyOf(kodeBerganti)
+        .filter((e) => e.status === "aktif")
+        .modify({ perluCetak: true });
+    }
     await db.kategori.bulkPut(
       kategori
         .filter((k) => !k.dihapus)
