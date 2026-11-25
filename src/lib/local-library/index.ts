@@ -1306,8 +1306,16 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     };
   }
 
-  /** "Keluar & hapus data di perangkat ini" (ADR 0004). */
+  /** Yang akan hilang bila data di perangkat dihapus: bahan pesan konfirmasi "Keluar & hapus data". */
+  async function ringkasanDataPerangkat(): Promise<{ belumTerkirim: number; drafMenunggu: number }> {
+    await siap;
+    const status = await bacaStatus();
+    return { belumTerkirim: status.menunggu + status.ditolak, drafMenunggu: await bacaJumlahDrafMenunggu() };
+  }
+
+  /** "Keluar & hapus data di perangkat ini" (ADR 0004): menghapus basis data IndexedDB. */
   async function hapusDataPerangkat() {
+    await siap.catch(() => {});
     await db.delete();
   }
 
@@ -1346,6 +1354,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     logPerubahan,
     sinkronkan,
     hapusDataPerangkat,
+    ringkasanDataPerangkat,
     jumlahDrafMenunggu,
     lengkapiDrafMenunggu,
     pantauJumlahDrafMenunggu: (cb: (jumlah: number) => void) => pantau(bacaJumlahDrafMenunggu, cb),
