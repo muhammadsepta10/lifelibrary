@@ -19,6 +19,7 @@ import { FormSesi, ringkasSesi } from "./form-sesi";
 import { tombolSekunderCls, tombolUtamaCls } from "./form";
 import { useLibrary } from "./library-provider";
 import { KameraScanner } from "./kamera-scanner";
+import { KotakPindai, useKotakPindai } from "./kotak-pindai";
 import { PilihKategori } from "./pilih-kategori";
 
 type Lembar =
@@ -64,6 +65,7 @@ export function LayarSesi({
   const [kategoriEksemplar, setKategoriEksemplar] = useState("");
   const timerPesan = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const timerKilat = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { keadaan: keadaanKotak, terbaca: kotakTerbaca, berhasil: kotakBerhasil, ditolak: kotakDitolak } = useKotakPindai(kameraDiinginkan && kamera === "aktif" && lembar === null);
 
   useEffect(() => sesi.pantau(setKartu), [sesi]);
   useEffect(
@@ -89,7 +91,12 @@ export function LayarSesi({
   /** Satu jalur untuk bacaan kamera dan isian ISBN (scanner USB = ketikan + Enter). */
   const tangani = useCallback(
     async (kode: string, dariKamera: boolean) => {
+      if (dariKamera) kotakTerbaca();
       const hasil = await sesi.pindai(kode);
+      if (dariKamera && hasil.jenis !== "diabaikan") {
+        if (hasil.jenis === "ditolak" || hasil.jenis === "sudahDiDaftar") kotakDitolak();
+        else kotakBerhasil();
+      }
       switch (hasil.jenis) {
         case "diabaikan":
           return;
@@ -115,7 +122,7 @@ export function LayarSesi({
           return;
       }
     },
-    [sesi, tampilkanPesan, kilatkan],
+    [sesi, tampilkanPesan, kilatkan, kotakTerbaca, kotakBerhasil, kotakDitolak],
   );
 
   function kirimIsbn(e: React.FormEvent) {
@@ -219,18 +226,12 @@ export function LayarSesi({
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
         {kameraDiinginkan && kamera !== "galat" && (
-          <>
-            <div
-              aria-hidden
-              className={cn(
-                "aspect-[16/9] w-full max-w-sm rounded-2xl border-[3px] border-white/80 transition-colors duration-300",
-                kilat && "border-emerald-400",
-              )}
-            />
-            <p className="mt-3 rounded-full bg-black/50 px-4 py-1.5 text-center text-sm">
-              {kamera === "memulai" ? "Menyalakan kamera…" : "Arahkan barcode ISBN ke dalam kotak"}
-            </p>
-          </>
+          <KotakPindai
+            keadaan={keadaanKotak}
+            memulai={kamera === "memulai"}
+            arahan="Arahkan barcode ISBN ke dalam kotak"
+            saranBelumTerbaca="Barcode belum terbaca. Jauhkan HP sedikit, hindari pantulan cahaya, atau ketik ISBN di bawah."
+          />
         )}
         {kameraDiinginkan && pesanKamera && (
           <p role="status" className="max-w-sm rounded-2xl bg-black/70 p-4 text-center text-sm">
