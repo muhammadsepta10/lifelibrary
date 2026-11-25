@@ -1,5 +1,5 @@
 {
-  "id": "3bae3327-0be5-4290-9865-2599457da961",
+  "id": "2cd9b104-5d8c-4efb-8203-09066a4fea7a",
   "prevId": "db2d6016-9e60-4aaf-b4f8-71e013e9307a",
   "version": "7",
   "dialect": "postgresql",
@@ -751,12 +751,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "penyiangan_jenis": {
+          "name": "penyiangan_jenis",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "penyiangan_tanggal": {
+          "name": "penyiangan_tanggal",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "penyiangan_alasan": {
+          "name": "penyiangan_alasan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "perlu_cetak": {
           "name": "perlu_cetak",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "field_waktu": {
           "name": "field_waktu",
@@ -1113,74 +1131,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.template_label": {
-      "name": "template_label",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "kertas": {
-          "name": "kertas",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "w": {
-          "name": "w",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "h": {
-          "name": "h",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mt": {
-          "name": "mt",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ml": {
-          "name": "ml",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gx": {
-          "name": "gx",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gy": {
-          "name": "gy",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp (3) with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "clock_timestamp()"
         }
       },
       "indexes": {},

@@ -5,7 +5,7 @@ import type { NomorPanggil } from "./nomor-panggil";
 export const ALASAN_BELUM_PUNYA_NOMOR_INDUK = "belum punya Nomor Induk";
 
 /** Eksemplar di Antrean Cetak. */
-export type ItemAntrean = {
+export type ItemAntreanCetak = {
   eksemplarId: string;
   bukuId: string;
   judul: string;

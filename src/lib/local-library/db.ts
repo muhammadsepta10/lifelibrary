@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { JenisAturan } from "@/lib/kelola-protocol";
 import type { FieldBuku, FieldEksemplar, KontributorDto } from "@/lib/buku-fields";
+import type { PenyianganDto } from "@/lib/penyiangan-protocol";
 import type { Mutasi } from "@/lib/sync-protocol";
 
 export type KategoriRow = {
@@ -35,6 +36,8 @@ export type EksemplarRow = FieldEksemplar & {
   /** ISO 8601 dengan offset zona perangkat. */
   waktuDicatat: string;
   status: "aktif" | "keluar";
+  /** Catatan Penyiangan; kosong (atau tidak ada pada baris lama) selama aktif. */
+  penyiangan?: PenyianganDto | null;
   menungguSinkron: boolean;
   /**
    * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak) dan
@@ -50,6 +53,20 @@ export type OutboxRow = {
   mutasi: Mutasi;
   /** Alasan dari server bila mutasi ditolak permanen; tidak dikirim ulang. */
   ditolak?: string;
+};
+
+/** Catatan field yang ditimpa perubahan dari perangkat lain (log halaman Sinkronisasi). */
+export type LogRow = {
+  id: string;
+  /** Epoch milidetik, jam perangkat. */
+  pada: number;
+  bukuId: string;
+  eksemplarId: string | null;
+  judul: string;
+  field: string;
+  label: string;
+  /** Teks polos, mis. "Penerbit di Laut Bercerita diperbarui dari perangkat lain". */
+  pesan: string;
 };
 
 export type MetaRow = { key: string; value: string | null };
@@ -88,6 +105,7 @@ export class LocalDb extends Dexie {
   eksemplar!: EntityTable<EksemplarRow, "id">;
   outbox!: EntityTable<OutboxRow, "seq">;
   meta!: EntityTable<MetaRow, "key">;
+  log!: EntityTable<LogRow, "id">;
 
   constructor(name: string) {
     super(name);
@@ -116,5 +134,6 @@ export class LocalDb extends Dexie {
           .toCollection()
           .modify((e) => Object.assign(e, eksemplarKosong(), { ...e }));
       });
+    this.version(4).stores({ log: "id, pada" });
   }
 }

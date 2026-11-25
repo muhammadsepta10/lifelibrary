@@ -10,7 +10,7 @@ import { useLibrary } from "@/components/app/library-provider";
 import { PageHeader } from "@/components/app/page-header";
 import {
   ButuhKoneksiError,
-  type ItemAntrean,
+  type ItemAntreanCetak,
   type RencanaCetak,
   type TemplateLabelLengkap,
 } from "@/lib/local-library";
@@ -21,7 +21,7 @@ const PX_PER_MM = 96 / 25.4;
 
 export default function CetakPage() {
   const { library, online } = useLibrary();
-  const [antrean, setAntrean] = useState<ItemAntrean[]>();
+  const [antrean, setAntrean] = useState<ItemAntreanCetak[]>();
   const [template, setTemplate] = useState<TemplateLabelLengkap>();
   /** Yang dicopot centangnya; Eksemplar baru di antrean otomatis terpilih. */
   const [dicopot, setDicopot] = useState<Set<string>>(new Set());

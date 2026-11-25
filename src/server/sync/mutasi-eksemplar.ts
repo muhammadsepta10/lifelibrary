@@ -3,7 +3,8 @@ import { NAMA_FIELD_EKSEMPLAR } from "@/lib/buku-fields";
 import type { Mutasi } from "@/lib/sync-protocol";
 import { buku, eksemplar, kategori, lokasi } from "@/server/db/schema";
 import { sekarangServer } from "@/server/kelola/galat";
-import { diterima, ditolak, tandaiWaktu, type HasilTanpaId } from "./hasil";
+import type { FieldDitimpa } from "@/lib/sync-protocol";
+import { bagiMenangKalah, diterima, ditolak, type HasilTanpaId } from "./hasil";
 import { alokasiNomorInduk } from "./nomor-induk";
 import type { Tx } from "./tx";
 
@@ -61,25 +62,25 @@ export async function ubahEksemplar(
 ): Promise<HasilTanpaId> {
   const [ada] = await tx.select().from(eksemplar).where(eq(eksemplar.id, m.eksemplarId));
   if (!ada) return ditolak("Eksemplar tidak ditemukan di server");
-  if (m.perubahan.lokasiId && !(await lokasiAda(tx, m.perubahan.lokasiId))) {
+
+  // Per field, yang terbaru menang (ADR 0004).
+  const disebut = NAMA_FIELD_EKSEMPLAR.filter((key) => m.perubahan[key] !== undefined);
+  const { menang, kalah, fieldWaktu } = bagiMenangKalah(ada.fieldWaktu, disebut, m.waktuUbah);
+  if (m.perubahan.lokasiId && menang.includes("lokasiId") && !(await lokasiAda(tx, m.perubahan.lokasiId))) {
     return ditolak("Lokasi tidak dikenal");
   }
 
-  const set: Record<string, unknown> = {};
-  const disebut: string[] = [];
-  for (const key of NAMA_FIELD_EKSEMPLAR) {
-    const nilai = m.perubahan[key];
-    if (nilai === undefined) continue;
-    set[key] = nilai ?? null;
-    disebut.push(key);
-  }
-  if (disebut.length > 0) {
+  if (menang.length > 0) {
+    const set = Object.fromEntries(menang.map((key) => [key, m.perubahan[key] ?? null]));
     await tx
       .update(eksemplar)
-      .set({ ...set, fieldWaktu: tandaiWaktu(ada.fieldWaktu, disebut, m.waktuUbah), updatedAt: sekarangServer })
+      .set({ ...set, fieldWaktu, updatedAt: sekarangServer })
       .where(eq(eksemplar.id, m.eksemplarId));
   }
-  return diterima();
+  const ditimpa: FieldDitimpa[] = kalah
+    .filter((key) => (ada[key] ?? null) !== (m.perubahan[key] ?? null))
+    .map((key) => ({ field: key, nilai: ada[key] ?? null }));
+  return diterima({ ditimpa });
 }
 
 /** Pemilik menandai Label sudah tercetak; Eksemplar yang tidak dikenal dilewati. */
@@ -104,15 +105,17 @@ export async function koreksiKategori(
   const [kat] = await tx.select().from(kategori).where(eq(kategori.id, m.kategoriId));
   if (!kat || kat.dihapus) return ditolak("Kategori tidak dikenal");
 
+  const { menang, fieldWaktu } = bagiMenangKalah(ada.fieldWaktu, ["kategoriId"], m.waktuUbah);
+  if (menang.length === 0) {
+    // Kalah dari koreksi yang lebih baru dari perangkat lain.
+    return diterima(
+      ada.kategoriId === m.kategoriId ? {} : { ditimpa: [{ field: "kategoriId", nilai: ada.kategoriId }] },
+    );
+  }
   if (ada.kategoriId !== m.kategoriId) {
     await tx
       .update(eksemplar)
-      .set({
-        kategoriId: m.kategoriId,
-        perluCetak: true,
-        fieldWaktu: tandaiWaktu(ada.fieldWaktu, ["kategoriId"], m.waktuUbah),
-        updatedAt: sekarangServer,
-      })
+      .set({ kategoriId: m.kategoriId, perluCetak: true, fieldWaktu, updatedAt: sekarangServer })
       .where(eq(eksemplar.id, m.eksemplarId));
   }
   return diterima();

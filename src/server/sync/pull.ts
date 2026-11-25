@@ -1,72 +1,59 @@
-import { asc, eq, gt, inArray } from "drizzle-orm";
-import {
-  aturanKategori,
-  buku,
-  bukuKontributor,
-  eksemplar,
-  kategori,
-  kontributor,
-  lokasi,
-  templateLabel,
-} from "@/server/db/schema";
+import { and, asc, eq, gt, notInArray, or, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { aturanKategori, buku, eksemplar, kategori, lokasi, templateLabel } from "@/server/db/schema";
 import { templateDariRow } from "@/server/kelola/template-label";
 import type { Db } from "@/server/db/types";
+import { eksemplarDto } from "./dto";
 import type { AturanKategoriDto, BukuDto, EksemplarDto, KategoriDto, LokasiDto, PullResponse } from "@/lib/sync-protocol";
+import { muatKontributor } from "./kontributor";
+
+const PEMISAH = "~";
+
+/**
+ * Kursor = waktu `updatedAt` terbaru yang sudah diterima, ditambah id baris yang
+ * sudah diterima pada milidetik persis itu: `<ISO>` atau `<ISO>~id1,id2`.
+ * Baris lain yang ditulis pada milidetik yang sama (setelah pull sebelumnya)
+ * tetap terambil, dan baris yang sudah diterima tidak diulang.
+ */
+function bacaKursor(kursor: string | null) {
+  if (!kursor) return null;
+  const [iso, ids] = kursor.split(PEMISAH);
+  const waktu = new Date(iso);
+  if (Number.isNaN(waktu.getTime()) || waktu.toISOString() !== iso) throw new Error("Kursor tidak valid");
+  return { waktu, sudah: ids ? ids.split(",") : [] };
+}
 
 /** Perubahan sejak kursor (berdasarkan `updatedAt` server). Kursor null = semuanya. */
 export async function pull(db: Db, kursor: string | null): Promise<PullResponse> {
-  const sejak = kursor ? new Date(kursor) : null;
-  if (sejak && Number.isNaN(sejak.getTime())) throw new Error("Kursor tidak valid");
+  const sejak = bacaKursor(kursor);
 
-  const kategoriRows = await db
-    .select()
-    .from(kategori)
-    .where(sejak ? gt(kategori.updatedAt, sejak) : undefined)
-    .orderBy(asc(kategori.updatedAt));
-  const lokasiRows = await db
-    .select()
-    .from(lokasi)
-    .where(sejak ? gt(lokasi.updatedAt, sejak) : undefined)
-    .orderBy(asc(lokasi.updatedAt));
+  const baru = (t: { id: AnyPgColumn; updatedAt: AnyPgColumn }): SQL | undefined => {
+    if (!sejak) return undefined;
+    const sama = sejak.sudah.length
+      ? and(eq(t.updatedAt, sejak.waktu), notInArray(t.id, sejak.sudah))
+      : eq(t.updatedAt, sejak.waktu);
+    return or(gt(t.updatedAt, sejak.waktu), sama);
+  };
+
+  const kategoriRows = await db.select().from(kategori).where(baru(kategori)).orderBy(asc(kategori.updatedAt));
+  const lokasiRows = await db.select().from(lokasi).where(baru(lokasi)).orderBy(asc(lokasi.updatedAt));
   const aturanRows = await db
     .select()
     .from(aturanKategori)
-    .where(sejak ? gt(aturanKategori.updatedAt, sejak) : undefined)
+    .where(baru(aturanKategori))
     .orderBy(asc(aturanKategori.updatedAt));
-  const templateRows = await db
-    .select()
-    .from(templateLabel)
-    .where(sejak ? gt(templateLabel.updatedAt, sejak) : undefined);
-  const bukuRows = await db
-    .select()
-    .from(buku)
-    .where(sejak ? gt(buku.updatedAt, sejak) : undefined)
-    .orderBy(asc(buku.updatedAt));
+  const templateRows = await db.select().from(templateLabel).where(baru(templateLabel));
+  const bukuRows = await db.select().from(buku).where(baru(buku)).orderBy(asc(buku.updatedAt));
   const eksemplarRows = await db
     .select()
     .from(eksemplar)
-    .where(sejak ? gt(eksemplar.updatedAt, sejak) : undefined)
+    .where(baru(eksemplar))
     .orderBy(asc(eksemplar.updatedAt));
 
-  const kontribusi = bukuRows.length
-    ? await db
-        .select({
-          bukuId: bukuKontributor.bukuId,
-          id: kontributor.id,
-          nama: kontributor.nama,
-          peran: bukuKontributor.peran,
-          urutan: bukuKontributor.urutan,
-          utama: bukuKontributor.utama,
-        })
-        .from(bukuKontributor)
-        .innerJoin(kontributor, eq(kontributor.id, bukuKontributor.kontributorId))
-        .where(
-          inArray(
-            bukuKontributor.bukuId,
-            bukuRows.map((b) => b.id),
-          ),
-        )
-    : [];
+  const kontribusi = await muatKontributor(
+    db,
+    bukuRows.map((b) => b.id),
+  );
 
   const kategoriDto: KategoriDto[] = kategoriRows.map((k) => ({
     id: k.id,
@@ -101,43 +88,31 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     subjek: b.subjek,
     kelasDdc: b.kelasDdc,
     isbn13: b.isbn13,
-    kontributor: kontribusi
-      .filter((k) => k.bukuId === b.id)
-      .sort((a, b2) => a.urutan - b2.urutan)
-      .map((k) => ({
-        id: k.id,
-        nama: k.nama,
-        peran: k.peran as BukuDto["kontributor"][number]["peran"],
-        utama: k.utama,
-      })),
+    kontributor: kontribusi.get(b.id) ?? [],
   }));
-  const eksemplarDto: EksemplarDto[] = eksemplarRows.map((e) => ({
-    id: e.id,
-    bukuId: e.bukuId,
-    kategoriId: e.kategoriId,
-    nomorInduk: e.nomorInduk,
-    tahunPencatatan: e.tahunPencatatan,
-    waktuDicatat: e.waktuDicatatPerangkat.toISOString(),
-    status: e.status as EksemplarDto["status"],
-    lokasiId: e.lokasiId,
-    tanggalMasuk: e.tanggalMasuk,
-    asal: e.asal as EksemplarDto["asal"],
-    harga: e.harga,
-    kondisi: e.kondisi as EksemplarDto["kondisi"],
-    perluCetak: e.perluCetak,
-  }));
+  const eksemplarDtos: EksemplarDto[] = eksemplarRows.map(eksemplarDto);
 
-  const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...templateRows, ...bukuRows, ...eksemplarRows]
-    .map((r) => r.updatedAt.getTime())
-    .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
+  const semua = [...kategoriRows, ...lokasiRows, ...aturanRows, ...templateRows, ...bukuRows, ...eksemplarRows];
+  const terbaru = semua.reduce<number | null>((max, r) => {
+    const t = r.updatedAt.getTime();
+    return max === null || t > max ? t : max;
+  }, null);
+
+  let kursorBaru = kursor;
+  if (terbaru !== null) {
+    const iso = new Date(terbaru).toISOString();
+    const diTerbaru = semua.filter((r) => r.updatedAt.getTime() === terbaru).map((r) => r.id);
+    const lanjutan = sejak && sejak.waktu.getTime() === terbaru ? sejak.sudah : [];
+    kursorBaru = [iso, [...lanjutan, ...diTerbaru].join(",")].filter(Boolean).join(PEMISAH);
+  }
 
   return {
-    kursor: terbaru === null ? kursor : new Date(terbaru).toISOString(),
+    kursor: kursorBaru,
     kategori: kategoriDto,
     lokasi: lokasiDto,
     aturanKategori: aturanDto,
     templateLabel: templateRows[0] ? templateDariRow(templateRows[0]) : null,
     buku: bukuDto,
-    eksemplar: eksemplarDto,
+    eksemplar: eksemplarDtos,
   };
 }

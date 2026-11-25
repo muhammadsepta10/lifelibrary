@@ -1,0 +1,30 @@
+{
+  "_synthetic": true,
+  "_catatan": "FIKSI untuk tes: Google Books tidak punya rekaman asli untuk ISBN ini. Bentuk mengikuti https://developers.google.com/books/docs/v1/using",
+  "kind": "books#volumes",
+  "totalItems": 1,
+  "items": [
+    {
+      "kind": "books#volume",
+      "id": "sintetis-laut-bercerita",
+      "volumeInfo": {
+        "title": "Laut Bercerita",
+        "authors": ["Leila S. Chudori"],
+        "publisher": "Kepustakaan Populer Gramedia",
+        "publishedDate": "2017-10-19",
+        "description": "Sinopsis dari Google Books (sintetis).",
+        "industryIdentifiers": [
+          { "type": "ISBN_13", "identifier": "9786024246945" },
+          { "type": "ISBN_10", "identifier": "6024246943" }
+        ],
+        "pageCount": 394,
+        "categories": ["Fiction", "Political"],
+        "language": "id",
+        "imageLinks": {
+          "smallThumbnail": "http://books.google.com/books/content?id=sintetis&zoom=5",
+          "thumbnail": "http://books.google.com/books/content?id=sintetis&zoom=1"
+        }
+      }
+    }
+  ]
+}

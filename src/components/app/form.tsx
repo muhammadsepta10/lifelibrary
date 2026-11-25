@@ -20,7 +20,7 @@ export function Field({
   children,
 }: {
   id: string;
-  label: string;
+  label: React.ReactNode;
   galat?: string | null;
   petunjuk?: string;
   children: React.ReactNode;

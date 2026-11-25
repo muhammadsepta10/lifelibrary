@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1795574085115,
-      "tag": "0003_cetak_label",
+      "when": 1795574036016,
+      "tag": "0003_penyiangan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795575148719,
+      "tag": "0004_cetak_label",
       "breakpoints": true
     }
   ]

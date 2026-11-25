@@ -9,6 +9,7 @@ import {
 } from "./buku-fields";
 import type { TemplateLabel } from "./label/template-label";
 import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
+import type { PenyianganDto } from "./penyiangan-protocol";
 
 export type { AturanKategoriDto, KategoriDto, LokasiDto };
 
@@ -94,8 +95,15 @@ export const pushRequestSchema = z.object({
 export type Mutasi = z.infer<typeof mutasiSchema>;
 export type PushRequest = z.infer<typeof pushRequestSchema>;
 
+/**
+ * Field dari mutasi ini yang kalah dari perubahan yang lebih baru dari perangkat
+ * lain (ADR 0004: per field, yang terbaru menang). `nilai` adalah nilai yang kini
+ * berlaku di server, supaya perangkat bisa menyamakan salinan lokalnya.
+ */
+export type FieldDitimpa = { field: string; nilai: unknown };
+
 export type HasilMutasi =
-  | { id: string; status: "diterima"; nomorInduk?: string; eksemplarId?: string }
+  | { id: string; status: "diterima"; nomorInduk?: string; eksemplarId?: string; ditimpa?: FieldDitimpa[] }
   | { id: string; status: "ditolak"; alasan: string };
 
 export type PushResponse = { hasil: HasilMutasi[] };
@@ -115,6 +123,8 @@ export type EksemplarDto = FieldEksemplar & {
   tahunPencatatan: number;
   waktuDicatat: string;
   status: "aktif" | "keluar";
+  /** Terisi bila `status` = `keluar` (Penyiangan). */
+  penyiangan: PenyianganDto | null;
   /**
    * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak) dan
    * kembali benar bila Nomor Panggilnya berubah. Antrean Cetak membacanya.

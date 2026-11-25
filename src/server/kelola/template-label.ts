@@ -4,7 +4,8 @@ import { templateLabel } from "@/server/db/schema";
 import type { Db } from "@/server/db/types";
 import { parse, sekarangServer } from "./galat";
 
-export const ID_TEMPLATE_LABEL = "utama";
+/** Satu Pemilik, satu koleksi, satu Template Label: id baris selalu sama. */
+export const ID_TEMPLATE_LABEL = "7f0c1a10-0000-4000-8000-00000000e1ab";
 
 type Row = typeof templateLabel.$inferSelect;
 

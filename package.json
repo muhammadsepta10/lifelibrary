@@ -19,6 +19,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.6.0",
     "@neondatabase/serverless": "^1.2.1",
+    "@vercel/blob": "^2.9.0",
     "better-auth": "^1.7.27",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
@@ -27,6 +28,7 @@
     "jsbarcode": "3.12.3",
     "lucide-react": "^1.78.0",
     "next": "16.4.6",
+    "pdf-lib": "^1.17.1",
     "radix-ui": "^1.8.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",

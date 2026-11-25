@@ -1,5 +1,5 @@
 CREATE TABLE "template_label" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"kertas" text NOT NULL,
 	"w" double precision NOT NULL,
 	"h" double precision NOT NULL,

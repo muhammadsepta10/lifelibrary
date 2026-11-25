@@ -152,6 +152,10 @@ export const eksemplar = pgTable(
     /** Rupiah utuh. */
     harga: integer("harga"),
     kondisi: text("kondisi"),
+    /** Penyiangan (hilang/rusak/dihibahkan/dijual); terisi bersama `status` = keluar. */
+    penyianganJenis: text("penyiangan_jenis"),
+    penyianganTanggal: date("penyiangan_tanggal", { mode: "string" }),
+    penyianganAlasan: text("penyiangan_alasan"),
     /**
      * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak),
      * kembali benar saat Nomor Panggil berubah, salah setelah Pemilik menandai
@@ -183,9 +187,12 @@ export const syncMutasi = pgTable("sync_mutasi", {
   diterimaPada: timestamp("diterima_pada", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** Template Label milik Pemilik (satu baris, id tetap `utama`); ukuran dalam mm. */
+/**
+ * Template Label milik Pemilik (satu baris dengan id tetap); ukuran dalam mm.
+ * Id berupa uuid karena kursor pull memakai id baris dari semua tabel.
+ */
 export const templateLabel = pgTable("template_label", {
-  id: text("id").primaryKey(),
+  id: uuid("id").primaryKey(),
   kertas: text("kertas").notNull(),
   w: doublePrecision("w").notNull(),
   h: doublePrecision("h").notNull(),
