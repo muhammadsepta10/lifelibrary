@@ -15,6 +15,7 @@ import {
   useDetailBuku,
 } from "@/components/app/form";
 import { useLibrary } from "@/components/app/library-provider";
+import { PanelPinjaman } from "@/components/app/panel-pinjaman";
 import { Penyiangan } from "@/components/app/penyiangan";
 import { PageHeader } from "@/components/app/page-header";
 import { ASAL, KONDISI, LABEL_ASAL, LABEL_KONDISI, type Asal, type Kondisi } from "@/lib/buku-fields";
@@ -286,6 +287,7 @@ function Isi() {
           )}
           <FormEksemplar key={eksemplarId ?? "baru"} buku={buku} eksemplar={eksemplar} />
           {eksemplar && <KoreksiKategori buku={buku} eksemplar={eksemplar} />}
+          {eksemplar && <PanelPinjaman eksemplar={{ ...eksemplar, judul: buku.judul }} />}
           {eksemplar && <Penyiangan eksemplar={eksemplar} />}
         </>
       )}

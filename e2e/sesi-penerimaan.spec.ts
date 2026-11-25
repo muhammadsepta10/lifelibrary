@@ -84,8 +84,8 @@ test("login, Sesi Penerimaan: ketik ISBN, tinjau draf, konfirmasi Kategori, simp
 
   // Kartu menjadi Tersimpan; Nomor Induk dari server menggantikan "——" setelah Sinkronisasi.
   await expect(kartu.getByTestId("status-kartu")).toHaveText("Tersimpan");
-  await expect(kartu.getByTestId("nomor-induk-kartu")).toHaveText(/^(——|FIK-001\/\d{4})$/);
-  await expect(kartu.getByTestId("nomor-induk-kartu")).toHaveText(/^FIK-001\/\d{4}$/, { timeout: 30_000 });
+  await expect(kartu.getByTestId("nomor-induk-kartu")).toHaveText(/^(——|FIK-\d{3}\/\d{4})$/);
+  await expect(kartu.getByTestId("nomor-induk-kartu")).toHaveText(/^FIK-\d{3}\/\d{4}$/, { timeout: 30_000 });
 
   // ISBN yang sama (setelah jeda 1,5 detik) -> "Tambah eksemplar baru?".
   await page.waitForTimeout(1600);

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-export const PORT = 3100;
+/** `E2E_PORT` untuk menjalankan beberapa worktree berdampingan. */
+export const PORT = Number(process.env.E2E_PORT ?? 3100);
 export const BASE_URL = `http://localhost:${PORT}`;
 const BERKAS = ".data/e2e/env.json";
 

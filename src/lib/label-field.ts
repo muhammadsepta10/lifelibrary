@@ -23,6 +23,11 @@ export const LABEL_FIELD: Record<string, string> = {
   kondisi: "Kondisi",
   lokasiId: "Lokasi",
   kategoriId: "Kategori",
+  // Peminjaman dan Peminjam
+  jatuhTempo: "Jatuh tempo",
+  tanggalKembali: "Tanggal kembali",
+  nama: "Nama",
+  kontak: "Kontak",
 };
 
 export const labelField = (field: string) => LABEL_FIELD[field] ?? field;

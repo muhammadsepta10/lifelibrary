@@ -5,6 +5,9 @@ import {
   createLocalLibrary,
   type DaftarLokal,
   type DaftarAntrean,
+  type DaftarPeminjaman,
+  type ItemPeminjam,
+  tanggalLokal,
   type ItemKoleksi,
   type JumlahAntreanCetak,
   type KategoriRow,
@@ -35,6 +38,12 @@ type Ctx = {
   daftar: DaftarLokal | undefined;
   /** Antrean Cetak: `siapDicetak` = "Label siap dicetak". */
   jumlahCetak: JumlahAntreanCetak | undefined;
+  /** Peminjaman aktif, terlambat, riwayat; terlambat dihitung ulang saat tanggal berganti. */
+  peminjaman: DaftarPeminjaman | undefined;
+  /** Jumlah Peminjaman terlambat: badge di nav, chip di Beranda. */
+  jumlahTerlambat: number | undefined;
+  /** Peminjam yang tersalin di perangkat ("Pilih Peminjam lama"). */
+  peminjam: ItemPeminjam[] | undefined;
   /** Perintah kelola; hanya berhasil saat online (ADR 0004). */
   kelola: ReturnType<LocalLibrary["kelola"]> | null;
   keadaan: KeadaanSinkron;
@@ -70,8 +79,33 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(true);
   const [antrean, setAntrean] = useState<DaftarAntrean>();
   const [log, setLog] = useState<LogRow[]>();
+  const [peminjaman, setPeminjaman] = useState<DaftarPeminjaman>();
+  const [jumlahTerlambat, setJumlahTerlambat] = useState<number>();
+  const [peminjam, setPeminjam] = useState<ItemPeminjam[]>();
+  // Berganti saat tanggal perangkat berganti: pembaca terlambat dipasang ulang (tanggal bukan data di Dexie).
+  const [hari, setHari] = useState(() => tanggalLokal(new Date()));
   const [toasts, setToasts] = useState<PemberitahuanDitimpa[]>([]);
   const penjadwal = useRef<ReturnType<typeof buatPenjadwal> | null>(null);
+
+  useEffect(() => {
+    const periksa = () => setHari(tanggalLokal(new Date()));
+    const timer = setInterval(periksa, 60_000);
+    document.addEventListener("visibilitychange", periksa);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", periksa);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!library) return;
+    const berhenti = [
+      library.pantauPeminjaman(setPeminjaman),
+      library.pantauJumlahTerlambat(setJumlahTerlambat),
+      library.pantauPeminjam(setPeminjam),
+    ];
+    return () => berhenti.forEach((f) => f());
+  }, [library, hari]);
 
   const tutupToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
@@ -142,11 +176,11 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
-      sinkronkan, cobaLagi,
+      sinkronkan, cobaLagi, peminjaman, jumlahTerlambat, peminjam,
     }),
     [
       library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, antrean, log,
-      sinkronkan, cobaLagi,
+      sinkronkan, cobaLagi, peminjaman, jumlahTerlambat, peminjam,
     ],
   );
   return (
