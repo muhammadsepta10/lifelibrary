@@ -73,6 +73,57 @@ function Sel({ sel }: { sel: SelCetak }) {
   );
 }
 
+const TANDA_TEBAL = 0.2;
+const TANDA_PANJANG = 3;
+
+/** Posisi (mm) tiap batas sel sepanjang satu sumbu; batas yang berimpit (jarak 0) hanya dihitung sekali. */
+function batasSel(awal: number, ukuran: number, jarak: number, jumlah: number) {
+  const hasil = new Set<number>();
+  for (let k = 0; k < jumlah; k++) {
+    const kiri = awal + k * (ukuran + jarak);
+    hasil.add(Math.round(kiri * 1000) / 1000);
+    hasil.add(Math.round((kiri + ukuran) * 1000) / 1000);
+  }
+  return [...hasil];
+}
+
+/**
+ * Pemandu potong: tanda pendek di margin kertas pada setiap batas sel, supaya
+ * lembar bisa digunting lurus (ke samping lewat tanda kiri-kanan, ke bawah lewat
+ * tanda atas-bawah). Hanya di margin, jadi tidak mengenai Label.
+ */
+function PemanduPotong({ rencana }: { rencana: RencanaCetak }) {
+  const { template: t, kolom, baris, lebarKertas, tinggiKertas } = rencana;
+  const sisi = (margin: number, ukuranKertas: number) => {
+    const panjang = Math.min(TANDA_PANJANG, margin - 1);
+    if (panjang <= 0) return [];
+    const tengah = margin / 2;
+    return [tengah, ukuranKertas - tengah].map((p) => ({ p, panjang }));
+  };
+  const tandaBaris = (m: { p: number; panjang: number }, y: number) => (
+    <span
+      key={`b-${m.p}-${y}`}
+      className="lb-tanda"
+      style={{ left: `${m.p - m.panjang / 2}mm`, top: `${y - TANDA_TEBAL / 2}mm`, width: `${m.panjang}mm`, height: `${TANDA_TEBAL}mm` }}
+    />
+  );
+  const tandaKolom = (m: { p: number; panjang: number }, x: number) => (
+    <span
+      key={`k-${m.p}-${x}`}
+      className="lb-tanda"
+      style={{ top: `${m.p - m.panjang / 2}mm`, left: `${x - TANDA_TEBAL / 2}mm`, height: `${m.panjang}mm`, width: `${TANDA_TEBAL}mm` }}
+    />
+  );
+  const ys = batasSel(t.mt, t.h, t.gy, baris);
+  const xs = batasSel(t.ml, t.w, t.gx, kolom);
+  return (
+    <div aria-hidden data-pemandu-potong>
+      {sisi(t.ml, lebarKertas).flatMap((m) => ys.map((y) => tandaBaris(m, y)))}
+      {sisi(t.mt, tinggiKertas).flatMap((m) => xs.map((x) => tandaKolom(m, x)))}
+    </div>
+  );
+}
+
 /**
  * CSS lembar: ukuran mm sungguhan. `@page` (ukuran kertas Template Label, tanpa
  * margin) hanya ikut pada versi cetak, bukan pratinjau layar.
@@ -80,10 +131,11 @@ function Sel({ sel }: { sel: SelCetak }) {
 export function cssLembar(r: Pick<RencanaCetak, "lebarKertas" | "tinggiKertas">, denganPage = true) {
   return `
 ${denganPage ? `@page { size: ${r.lebarKertas}mm ${r.tinggiKertas}mm; margin: 0; }` : ""}
-.lb-sheets { margin: 0; padding: 0; }
+.lb-sheets { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .lb-sheet { position: relative; width: ${r.lebarKertas}mm; height: ${r.tinggiKertas}mm; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
 .lb-sheet:last-child { break-after: auto; page-break-after: auto; }
 .lb-cell { position: absolute; overflow: hidden; box-sizing: border-box; }
+.lb-tanda { position: absolute; background: #6b716d; }
 .lb-uji { outline: .3mm solid #E76F51; outline-offset: -.3mm; }
 .lb { width: 100%; height: 100%; display: flex; background: #fff; color: #1E2420; }
 .lb-spine { width: 17mm; display: flex; flex-direction: column; border-right: .3mm dashed #9aa19d; box-sizing: border-box; }
@@ -123,6 +175,7 @@ export function LembarCetak({ rencana, pratinjau = false }: { rencana: RencanaCe
       <style>{cssLembar(rencana, !pratinjau) + (pratinjau ? CSS_PRATINJAU : "")}</style>
       {rencana.lembar.map((lembar) => (
         <div key={lembar.nomor} className="lb-sheet" data-lembar={lembar.nomor}>
+          <PemanduPotong rencana={rencana} />
           {lembar.sel.map((sel) => (
             <Sel key={sel.indeks} sel={sel} />
           ))}
