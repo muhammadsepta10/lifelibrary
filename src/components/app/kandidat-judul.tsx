@@ -2,12 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LABEL_SUMBER, type HasilKandidat, type Kandidat } from "@/lib/draf-buku";
-import { masukanKandidat, type MasukanKandidat } from "@/lib/judul-kandidat";
+import { JEDA_PENCARIAN_MS, masukanKandidat, type MasukanKandidat } from "@/lib/judul-kandidat";
 import { pencarianPerluMenunggu } from "@/lib/local-library/keadaan-metadata";
 import { cariKandidat } from "@/lib/sync/fetch-metadata";
-
-/** Jeda setelah ketikan terakhir sebelum pencarian judul berjalan. */
-export const JEDA_PENCARIAN_MS = 800;
 
 type Keadaan =
   | { status: "mencari" }
@@ -15,8 +12,13 @@ type Keadaan =
   | { status: "kosong" }
   | { status: "galat" };
 
-/** Kunci pasangan (judul, pengarang) yang sudah dirapikan; null bila judul terlalu pendek. */
-export const kunciKandidat = (m: MasukanKandidat | null) => (m ? JSON.stringify([m.judul, m.pengarang ?? ""]) : null);
+/**
+ * Kunci cache pasangan (judul, pengarang) yang sudah dirapikan; null bila judul
+ * terlalu pendek. masukanKandidat memadatkan semua spasi (termasuk baris baru)
+ * menjadi satu spasi, jadi "\n" tidak pernah muncul di dalam judul maupun
+ * pengarang dan pemisah ini tidak ambigu.
+ */
+export const kunciKandidat = (m: MasukanKandidat | null) => (m ? `${m.judul}\n${m.pengarang ?? ""}` : null);
 
 /**
  * Pencarian cadangan lewat judul (ADR 0007) untuk satu layar tinjau. Mencari
@@ -28,17 +30,30 @@ export const kunciKandidat = (m: MasukanKandidat | null) => (m ? JSON.stringify(
 export function useKandidat({ aktif, judul, pengarang }: { aktif: boolean; judul: string; pengarang: string }) {
   const masukan = aktif ? masukanKandidat(judul, pengarang) : null;
   const kunci = kunciKandidat(masukan);
+  // Nilai primitif untuk dependensi efek: objek `masukan` baru di tiap render.
+  const judulCari = masukan?.judul ?? null;
+  const pengarangCari = masukan?.pengarang;
   const [hasil, setHasil] = useState<{ kunci: string; keadaan: Keadaan | null } | null>(null);
   const [ditutup, setDitutup] = useState<string | null>(null);
   // Daftar yang ditutup muncul lagi hanya bila judul atau pengarang berubah; kembali ke pasangan lama pun dihitung berubah.
   if (ditutup !== null && ditutup !== kunci) setDitutup(null);
   const [segeraUntuk, setSegeraUntuk] = useState<string | null>(null);
   const cache = useRef(new Map<string, HasilKandidat>());
+  // Perangkat kembali online: pencarian yang tertunda (tanpa hasil) dijalankan ulang tanpa jeda ketikan dan tanpa Pemilik mengetik lagi.
+  const [onlineLagi, setOnlineLagi] = useState(0);
+  const tanpaJedaOnline = useRef(false);
+  useEffect(() => {
+    const saatOnline = () => {
+      tanpaJedaOnline.current = true;
+      setOnlineLagi((n) => n + 1);
+    };
+    window.addEventListener("online", saatOnline);
+    return () => window.removeEventListener("online", saatOnline);
+  }, []);
 
   useEffect(() => {
-    if (!kunci || kunci === ditutup) return;
-    const [j, p] = JSON.parse(kunci) as [string, string];
-    const cari: MasukanKandidat = { judul: j, pengarang: p || undefined };
+    if (!kunci || judulCari === null || kunci === ditutup) return;
+    const cari: MasukanKandidat = { judul: judulCari, pengarang: pengarangCari };
     const dicache = cache.current.get(kunci);
     if (dicache) {
       setHasil({ kunci, keadaan: keadaanDari(dicache) });
@@ -65,12 +80,14 @@ export function useKandidat({ aktif, judul, pengarang }: { aktif: boolean; judul
         setHasil({ kunci, keadaan: pencarianPerluMenunggu(e) ? null : { status: "galat" } });
       }
     };
-    const timer = setTimeout(() => void jalan(), segeraUntuk === kunci ? 0 : JEDA_PENCARIAN_MS);
+    const tanpaJeda = segeraUntuk === kunci || tanpaJedaOnline.current;
+    tanpaJedaOnline.current = false;
+    const timer = setTimeout(() => void jalan(), tanpaJeda ? 0 : JEDA_PENCARIAN_MS);
     return () => {
       clearTimeout(timer);
       kendali.abort();
     };
-  }, [kunci, ditutup, segeraUntuk]);
+  }, [kunci, judulCari, pengarangCari, ditutup, segeraUntuk, onlineLagi]);
 
   const keadaan = kunci && kunci !== ditutup && hasil?.kunci === kunci ? hasil.keadaan : null;
   return {

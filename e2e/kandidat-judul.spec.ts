@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { masuk } from "./bantu";
+import { isbn13, LEWAT_JEDA_PENCARIAN_MS, masuk } from "./bantu";
 
-const ISBN_TAK_ADA = "9786026486066";
-/** ISBN lain untuk tes yang tidak menyimpan Buku, supaya tidak bentrok dengan Buku dari tes pertama. */
-const ISBN_GAGAL_SAMPUL = "9780735211292";
-const ISBN_ADA = "9786024246945";
+// ISBN unik per tes (rentang 210_xxx; sesi-kandidat memakai 200_xxx): tidak bergantung pada urutan tes atau Buku yang sudah tersimpan.
+const ISBN_TAK_ADA = isbn13(210_001);
+const ISBN_GAGAL_SAMPUL = isbn13(210_002);
+const ISBN_ADA = isbn13(210_003);
 
 const SUMBER_KOSONG = [
   { sumber: "openlibrary", status: "kosong" },
@@ -84,7 +84,7 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
 
   // Judul pendek tidak mencari.
   await page.locator("#judul").fill("Bu");
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   expect(permintaanJudul).toHaveLength(0);
 
   // Judul >= 3 karakter: mencari otomatis setelah jeda, Kandidat muncul.
@@ -132,7 +132,7 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
   await expect(page.getByText(`ISBN ${ISBN_TAK_ADA}`, { exact: true })).toBeVisible();
 
   // Daftar tidak muncul lagi sendiri setelah pilihan (tidak ada permintaan baru).
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   expect(permintaanJudul).toHaveLength(2);
   await expect(kandidat.getByRole("list")).toHaveCount(0);
 
@@ -214,7 +214,7 @@ test("ISBN ditemukan: tidak ada pencarian judul sama sekali", async ({ page }) =
   // Mengubah judul di sini tidak memicu pencarian cadangan.
   await page.locator("#judul").fill("Judul yang diubah Pemilik");
   await page.locator("#judul").press("Enter");
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   expect(permintaanJudul).toBe(0);
   await expect(page.getByTestId("kandidat-judul")).toHaveCount(0);
 });

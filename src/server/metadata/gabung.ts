@@ -1,11 +1,8 @@
-import { drafKosong, type DrafBuku, type FieldDraf, type Kandidat, type SumberMetadata } from "@/lib/draf-buku";
+import { drafKosong, MAKS_KANDIDAT, MAKS_SUBJEK, type DrafBuku, type FieldDraf, type Kandidat, type SumberMetadata } from "@/lib/draf-buku";
 import type { Parsial } from "./parsial";
 
 /** Urutan prioritas sumber (ADR 0003): Open Library, Google Books, Library of Congress. */
 export const URUTAN_SUMBER: readonly SumberMetadata[] = ["openlibrary", "google", "loc"];
-
-const MAKS_SUBJEK = 20;
-const MAKS_KANDIDAT = 5;
 
 /** Judul tanpa huruf besar, aksen, dan tanda baca, supaya "Atomic Habits!" dan "atomic  habits" sama. */
 const normal = (s: string) =>

@@ -1,12 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { masuk } from "./bantu";
+import { isbn13, LEWAT_JEDA_PENCARIAN_MS, LEWAT_RENDER_MS, masuk } from "./bantu";
 
-/** ISBN-13 sah berawalan 978602. Tiap tes memakai ISBN sendiri karena Buku yang tersimpan bertahan di basis data e2e. */
-function isbn13(n: number) {
-  const dua12 = `978602${String(n).padStart(6, "0")}`;
-  const jumlah = [...dua12].reduce((s, d, i) => s + Number(d) * (i % 2 === 0 ? 1 : 3), 0);
-  return dua12 + ((10 - (jumlah % 10)) % 10);
-}
+/** Jeda penahan scan ISBN yang sama beruntun di kotak pindai (kebiasaan spec sesi lain). */
+const JEDA_SCAN_ULANG_MS = 1600;
+
 const ISBN_ADA = isbn13(200_001);
 const ISBN_TAK_ADA = isbn13(200_002);
 const ISBN_KETIGA = isbn13(200_003);
@@ -114,7 +111,7 @@ test("Sesi Penerimaan: dua kartu, hanya yang ISBN-nya tidak ditemukan menawarkan
   await expect(lembar.locator("#judul")).toHaveValue("Buku Sudah Ketemu");
   await lembar.locator("#judul").fill("Judul diubah Pemilik");
   await lembar.locator("#judul").press("Enter");
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   await expect(lembar.getByTestId("kandidat-judul")).toHaveCount(0);
   expect(permintaanJudul).toHaveLength(0);
   await lembar.getByRole("button", { name: "Kembali ke kamera" }).click();
@@ -145,7 +142,7 @@ test("Sesi Penerimaan: dua kartu, hanya yang ISBN-nya tidak ditemukan menawarkan
   await expect(kartuAda.getByTestId("status-kartu")).toHaveText("Siap ditinjau");
 
   // Scan berikutnya tetap jalan; kartu barunya mulai tanpa Kandidat sebelumnya.
-  await page.waitForTimeout(1600);
+  await page.waitForTimeout(JEDA_SCAN_ULANG_MS);
   await isian.fill(ISBN_KETIGA);
   await isian.press("Enter");
   await expect(daftarKartu.getByRole("listitem")).toHaveCount(3);
@@ -215,7 +212,7 @@ test("Bukan salah satunya menutup daftar; judul atau pengarang berubah memunculk
   await expect(judul).toBeFocused();
 
   // Tidak muncul lagi sendiri.
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   await expect(kandidat.getByRole("list")).toHaveCount(0);
   expect(permintaan).toHaveLength(1);
 
@@ -235,7 +232,7 @@ test("Bukan salah satunya menutup daftar; judul atau pengarang berubah memunculk
   // Kembali ke pasangan yang pernah dicari: daftar muncul dari cache, tanpa permintaan baru.
   await page.getByLabel("Pengarang Utama").fill("");
   await expect(kandidat.getByRole("list")).toBeVisible();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   expect(permintaan).toHaveLength(3);
 });
 
@@ -300,7 +297,7 @@ test("permintaan lama dibatalkan saat input berubah dan hasilnya tidak pernah me
   await expect(kandidat.getByRole("button", { name: /Hasil Baru/ })).toBeVisible();
 
   await expect.poll(() => lamaDijawab, { timeout: 8000 }).toBe(true);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(LEWAT_RENDER_MS);
   await expect(kandidat.getByRole("button", { name: /Hasil Lama/ })).toHaveCount(0);
   await expect(kandidat.getByRole("button", { name: /Hasil Baru/ })).toBeVisible();
 });
@@ -320,7 +317,7 @@ test("offline atau login habis: tidak ada pesan galat, form tetap bisa diisi man
   await context.setOffline(true);
   await page.locator("#judul").fill("Bumi");
   await page.locator("#judul").press("Enter");
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
   expect(permintaan).toBe(0);
   await expect(status).not.toContainText(/gagal|tidak bisa dihubungi|Mencari/);
   await expect(kandidat.getByRole("alert")).toHaveCount(0);
@@ -330,10 +327,35 @@ test("offline atau login habis: tidak ada pesan galat, form tetap bisa diisi man
   sesiHabis = true;
   await page.locator("#judul").fill("Bumi Manusia");
   await expect.poll(() => permintaan).toBe(1);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(LEWAT_RENDER_MS);
   await expect(status).not.toContainText(/gagal|tidak bisa dihubungi|Mencari|Tidak ada data yang cocok/);
   await expect(kandidat.getByRole("alert")).toHaveCount(0);
 
   await page.locator("#penerbit").fill("Penerbit Manual");
   await expect(page.locator("#penerbit")).toHaveValue("Penerbit Manual");
+});
+
+test("judul sudah diketik saat offline: begitu perangkat online lagi, pencarian berjalan sendiri tanpa mengetik ulang", async ({
+  page,
+  context,
+}) => {
+  const permintaan: URL[] = [];
+  await page.route("**/api/metadata/judul*", async (route) => {
+    permintaan.push(new URL(route.request().url()));
+    await route.fulfill({ json: { kandidat: [KANDIDAT_BUMI], sumber: SUMBER_OK } });
+  });
+  const kandidat = await keLayarTinjau(page);
+
+  // Offline: judul diketik, tidak ada permintaan dan tidak ada pesan galat.
+  await context.setOffline(true);
+  await page.locator("#judul").fill("Bumi");
+  await page.waitForTimeout(LEWAT_JEDA_PENCARIAN_MS);
+  expect(permintaan).toHaveLength(0);
+  await expect(kandidat.getByRole("status")).not.toContainText(/gagal|tidak bisa dihubungi|Mencari/);
+
+  // Online lagi: pencarian tertunda berjalan sendiri.
+  await context.setOffline(false);
+  await expect(kandidat.getByRole("button", { name: /Bumi \(edisi lain\)/ })).toBeVisible();
+  expect(permintaan).toHaveLength(1);
+  expect(permintaan[0].searchParams.get("judul")).toBe("Bumi");
 });
