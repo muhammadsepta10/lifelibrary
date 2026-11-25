@@ -34,7 +34,8 @@ export function fakeFetch(aturan: Aturan[]) {
     const balas = typeof a.balas === "function" ? a.balas(url, init) : a.balas;
     if (balas === "macet") return new Promise<Response>(() => {});
     if (balas instanceof Error) throw balas;
-    return balas.clone();
+    // Balasan dari fungsi sudah segar per panggilan (boleh berisi stream yang diamati tes); yang statis disalin.
+    return typeof a.balas === "function" ? balas : balas.clone();
   }) as typeof fetch;
   return { fetch: fetchPalsu, permintaan };
 }
