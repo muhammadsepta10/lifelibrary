@@ -117,13 +117,27 @@ export function DaftarKandidat({
               <button
                 type="button"
                 onClick={() => onPilih(k)}
-                className="flex min-h-12 w-full flex-col items-start rounded-2xl border border-input bg-white px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-forest-link"
+                className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-input bg-white px-4 py-3 text-left focus-visible:ring-2 focus-visible:ring-forest-link"
               >
-                <span className="text-sm font-semibold">{k.judul}</span>
-                <span className="text-xs text-ink-muted">
-                  {[k.pengarang?.[0], k.penerbit, k.tahun].filter(Boolean).join(" · ") || "Tanpa keterangan lain"}
+                {k.sampulUrl && (
+                  // Pratinjau langsung dari situs sumber; sampul yang dipakai nanti diunduh server.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={k.sampulUrl}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-14 w-10 shrink-0 rounded-md border border-input object-cover"
+                    data-testid="sampul-kandidat"
+                  />
+                )}
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="text-sm font-semibold">{k.judul}</span>
+                  <span className="text-xs text-ink-muted">
+                    {[k.pengarang?.[0], k.penerbit, k.tahun].filter(Boolean).join(" · ") || "Tanpa keterangan lain"}
+                  </span>
+                  <span className="text-[11px] text-ink-muted">{LABEL_SUMBER[k.sumber]}</span>
                 </span>
-                <span className="text-[11px] text-ink-muted">{LABEL_SUMBER[k.sumber]}</span>
               </button>
             </li>
           ))}
