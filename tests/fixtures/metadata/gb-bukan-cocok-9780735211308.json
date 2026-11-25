@@ -1,0 +1,70 @@
+{
+  "kind": "books#volumes",
+  "totalItems": 1,
+  "items": [
+    {
+      "kind": "books#volume",
+      "id": "TpkeEgAAQBAJ",
+      "etag": "yKEcIi9V6AU",
+      "selfLink": "https://www.googleapis.com/books/v1/volumes/TpkeEgAAQBAJ",
+      "volumeInfo": {
+        "title": "Better Habits, Better You",
+        "authors": [
+          "javed meo"
+        ],
+        "publisher": "javed meo",
+        "publishedDate": "2026-10-21",
+        "description": "Better Habits, Better You Lasting change starts with the small choices you make every day. Better Habits, Better You explores how to build positive routines, break unhelpful patterns, and make progress without relying on motivation alone. Discover practical ways to start small, stay consistent, and turn everyday actions into meaningful change—one habit at a time.",
+        "readingModes": {
+          "text": false,
+          "image": true
+        },
+        "pageCount": 141,
+        "printType": "BOOK",
+        "categories": [
+          "Architecture"
+        ],
+        "maturityRating": "MATURE",
+        "allowAnonLogging": false,
+        "contentVersion": "preview-1.0.0",
+        "panelizationSummary": {
+          "containsEpubBubbles": false,
+          "containsImageBubbles": false
+        },
+        "imageLinks": {
+          "smallThumbnail": "http://books.google.com/books/content?id=TpkeEgAAQBAJ&printsec=frontcover&img=1&zoom=5&edge=curl&source=gbs_api",
+          "thumbnail": "http://books.google.com/books/content?id=TpkeEgAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        },
+        "language": "en",
+        "previewLink": "http://books.google.co.id/books?id=TpkeEgAAQBAJ&pg=PP1&dq=9780735211308&hl=&cd=1&source=gbs_api",
+        "infoLink": "http://books.google.co.id/books?id=TpkeEgAAQBAJ&dq=9780735211308&hl=&source=gbs_api",
+        "canonicalVolumeLink": "https://books.google.com/books/about/Better_Habits_Better_You.html?hl=&id=TpkeEgAAQBAJ"
+      },
+      "saleInfo": {
+        "country": "ID",
+        "saleability": "NOT_FOR_SALE",
+        "isEbook": false
+      },
+      "accessInfo": {
+        "country": "ID",
+        "viewability": "PARTIAL",
+        "embeddable": true,
+        "publicDomain": false,
+        "textToSpeechPermission": "ALLOWED",
+        "epub": {
+          "isAvailable": false
+        },
+        "pdf": {
+          "isAvailable": true,
+          "acsTokenLink": "http://books.google.co.id/books/download/Better_Habits_Better_You-sample-pdf.acsm?id=TpkeEgAAQBAJ&format=pdf&output=acs4_fulfillment_token&dl_type=sample&source=gbs_api"
+        },
+        "webReaderLink": "http://play.google.com/books/reader?id=TpkeEgAAQBAJ&hl=&source=gbs_api",
+        "accessViewStatus": "SAMPLE",
+        "quoteSharingAllowed": false
+      },
+      "searchInfo": {
+        "textSnippet": "... \u003cb\u003e9780735211308\u003c/b\u003e While the author has made every effort to provide accurate Internet addresses at the time of publication , neither the publisher nor the author assumes any responsibility for errors , or for changes that occur after&nbsp;..."
+      }
+    }
+  ]
+}

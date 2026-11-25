@@ -24,6 +24,13 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: "metadata",
+          include: ["tests/metadata/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: "auth",
           include: ["tests/auth/**/*.test.ts"],
           testTimeout: 20000,
