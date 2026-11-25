@@ -352,6 +352,7 @@ export function LayarSesi({
                 key={`${kartuTinjau.id}-${kartuTinjau.draf.judul}-${kartuTinjau.sumber.map((s) => s.status).join()}`}
                 draf={kartuTinjau.draf}
                 statusSumber={kartuTinjau.sumber}
+                cadanganJudul={kartuTinjau.cadanganJudul}
                 onSimpan={(d, kategoriId) => void simpanDraf(kartuTinjau.id, d, kategoriId)}
                 menyimpan={menyimpan}
                 galat={galatSimpan}
