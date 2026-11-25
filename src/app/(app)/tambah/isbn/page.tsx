@@ -221,6 +221,7 @@ export default function TambahIsbnPage() {
             key={`${tahap.draf.isbn13}-${tahap.draf.judul}-${tahap.sumber.map((s) => s.status).join()}`}
             draf={tahap.draf}
             statusSumber={tahap.sumber}
+            cadanganJudul={tahap.cadanganJudul}
             onSimpan={(d, k) => void simpanDraf(d, k)}
             menyimpan={menyimpan}
             galat={galatSimpan}

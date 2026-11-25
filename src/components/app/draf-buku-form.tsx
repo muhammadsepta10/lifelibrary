@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { LABEL_SUMBER, urlSampul, type DrafBuku, type FieldDraf, type StatusSumber } from "@/lib/draf-buku";
+import { LABEL_SUMBER, terapkanKandidat, urlSampul, type DrafBuku, type FieldDraf, type Kandidat, type StatusSumber } from "@/lib/draf-buku";
 import { bisaSimpanDraf, type SaranKategori } from "@/lib/local-library";
+import { DaftarKandidat, useKandidat } from "./kandidat-judul";
 import { Field, inputCls, keAngka, tombolSekunderCls, tombolUtamaCls } from "./form";
 import { useLibrary } from "./library-provider";
 import { PilihKategori } from "./pilih-kategori";
@@ -54,38 +55,76 @@ const KETERANGAN_STATUS: Record<StatusSumber["status"], string> = {
   dilewati: "dilewati",
 };
 
-/** Lencana sumber sebuah field; "diedit" bila Pemilik sudah mengubah nilainya. */
+/**
+ * Lencana sumber sebuah field; "diedit" bila Pemilik sudah mengubah nilainya.
+ * Field yang terisi dari Kandidat diberi "dari edisi lain, cek".
+ */
 function Sumber({ draf, field, diedit }: { draf: DrafBuku; field: FieldDraf; diedit: boolean }) {
   const asal = draf.sumber[field];
+  const dariKandidat = draf.dariKandidat?.includes(field) ?? false;
   if (!asal?.length) return null;
   return (
     <span className="ml-2 rounded-full bg-menunggu px-2 py-0.5 align-middle text-[11px] font-semibold text-menunggu-fg">
-      {diedit ? "diedit" : asal.map((s) => LABEL_SUMBER[s]).join(" + ")}
+      {diedit ? "diedit" : dariKandidat ? "dari edisi lain, cek" : asal.map((s) => LABEL_SUMBER[s]).join(" + ")}
     </span>
   );
 }
 
+/** Draf dari isian layar tinjau saat ini (field yang tidak ada di layar ikut dari `dasar`). */
+const drafDariIsian = (dasar: DrafBuku, isi: Isian): DrafBuku => ({
+  ...dasar,
+  judul: isi.judul,
+  pengarang: bersihPengarang(isi.pengarang),
+  penerbit: isi.penerbit,
+  kota: isi.kota,
+  tahun: keAngka(isi.tahun),
+  edisi: isi.edisi,
+  seri: isi.seri,
+  jilid: isi.jilid,
+  penerjemah: pecahDaftar(isi.penerjemah),
+  editor: pecahDaftar(isi.editor),
+  halaman: keAngka(isi.halaman),
+  bahasa: isi.bahasa,
+  sinopsis: isi.sinopsis,
+  kelasDdc: isi.kelasDdc,
+  subjek: pecahDaftar(isi.subjek),
+});
+
 /**
  * Layar tinjau draf Buku: field bisa diedit, sumber tiap field tampil, Saran
  * Kategori sudah terpilih lengkap dengan alasannya, dan tombol simpan baru
- * aktif setelah Kategori dikonfirmasi.
+ * aktif setelah Kategori dikonfirmasi. Dengan `cadanganJudul` (ISBN tidak
+ * ditemukan), form menawarkan Kandidat lewat judul yang dipilih Pemilik.
  */
 export function DrafBukuForm({
-  draf,
+  draf: drafAwal,
   statusSumber,
+  cadanganJudul = false,
   onSimpan,
   menyimpan,
   galat,
 }: {
   draf: DrafBuku;
   statusSumber: StatusSumber[];
+  cadanganJudul?: boolean;
   onSimpan: (draf: DrafBuku, kategoriId: string) => void;
   menyimpan: boolean;
   galat: { field: string; pesan: string } | null;
 }) {
   const { library, kategori } = useLibrary();
+  // Draf bisa diperkaya Kandidat; "diedit" dibandingkan terhadap isian sesudah penerapan.
+  const [draf, setDraf] = useState(drafAwal);
   const awal = useMemo(() => dariDraf(draf), [draf]);
   const [isi, setIsi] = useState<Isian>(awal);
+  const kandidat = useKandidat({ aktif: cadanganJudul, judul: isi.judul, pengarang: isi.pengarang[0] ?? "" });
+
+  function pilihKandidat(k: Kandidat) {
+    const baru = terapkanKandidat(drafDariIsian(draf, isi), k);
+    const isiBaru = dariDraf(baru);
+    setDraf(baru);
+    setIsi(isiBaru);
+    kandidat.tutup(isiBaru.judul, isiBaru.pengarang[0] ?? "");
+  }
   const [saran, setSaran] = useState<SaranKategori | null>(null);
   const [kat, setKat] = useState({ id: "", dikonfirmasi: false, manual: false });
 
@@ -116,27 +155,7 @@ export function DrafBukuForm({
   function simpan(e: React.FormEvent) {
     e.preventDefault();
     if (!bisaSimpan) return;
-    onSimpan(
-      {
-        ...draf,
-        judul: isi.judul,
-        pengarang: bersihPengarang(isi.pengarang),
-        penerbit: isi.penerbit,
-        kota: isi.kota,
-        tahun: keAngka(isi.tahun),
-        edisi: isi.edisi,
-        seri: isi.seri,
-        jilid: isi.jilid,
-        penerjemah: pecahDaftar(isi.penerjemah),
-        editor: pecahDaftar(isi.editor),
-        halaman: keAngka(isi.halaman),
-        bahasa: isi.bahasa,
-        sinopsis: isi.sinopsis,
-        kelasDdc: isi.kelasDdc,
-        subjek: pecahDaftar(isi.subjek),
-      },
-      kat.id,
-    );
+    onSimpan(drafDariIsian(draf, isi), kat.id);
   }
 
   const teks = (id: Exclude<keyof Isian, "pengarang" | "sinopsis" | "subjek">, label: string, opsi: { field?: FieldDraf; petunjuk?: string; inputMode?: "numeric" } = {}) => (
@@ -156,6 +175,16 @@ export function DrafBukuForm({
         className={inputCls}
         value={isi[id]}
         onChange={(e) => ubah(id, e.target.value)}
+        onKeyDown={
+          id === "judul" && cadanganJudul
+            ? (e) => {
+                // Enter di judul mencari langsung, bukan menyimpan form.
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                kandidat.segera();
+              }
+            : undefined
+        }
         aria-invalid={!!galatDi(id)}
         inputMode={opsi.inputMode}
         autoComplete="off"
@@ -183,6 +212,8 @@ export function DrafBukuForm({
       {draf.isbn13 ? <p className="font-mono text-sm">ISBN {draf.isbn13}</p> : <p className="text-sm text-ink-muted">Buku tanpa ISBN</p>}
 
       {teks("judul", "Judul", { field: "judul" })}
+
+      {cadanganJudul && <DaftarKandidat keadaan={kandidat.keadaan} onPilih={pilihKandidat} />}
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-medium">
