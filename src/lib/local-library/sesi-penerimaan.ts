@@ -12,7 +12,9 @@ import { liveQuery } from "dexie";
 import type { Asal } from "@/lib/buku-fields";
 import { drafKosong, type DrafBuku, type HasilPencarianMetadata, type StatusSumber } from "@/lib/draf-buku";
 import { normalisasiIsbn } from "@/lib/isbn";
+import type { DrafMenungguRow } from "./db";
 import type { BukuDuplikat } from "./draf";
+import { dariGalat, dariHasil, type KeadaanMetadata } from "./keadaan-metadata";
 import { periksaFieldEksemplar } from "./masukan";
 import { isoLokal } from "./waktu";
 
@@ -26,7 +28,10 @@ export type DataSesi = {
   lokasiId: string | null;
 };
 
-/** Mencari… -> Siap ditinjau -> Tersimpan. "Menunggu data" disiapkan untuk scan offline (tiket #8). */
+/**
+ * Mencari… -> Siap ditinjau -> Tersimpan. "Menunggu data": scan offline (atau
+ * sesi login habis), disimpan di perangkat dan dilengkapi otomatis saat online.
+ */
 export type StatusKartu = "mencari" | "siap" | "tersimpan" | "menunggu-data";
 export const LABEL_STATUS_KARTU: Record<StatusKartu, string> = {
   mencari: "Mencari…",
@@ -91,21 +96,18 @@ export type DepsSesi = {
     eksemplar: { kategoriId: string } & DataSesi,
   ) => Promise<{ bukuId: string; eksemplarId: string }>;
   catatEksemplar: (input: { bukuId: string; kategoriId: string } & DataSesi) => Promise<{ eksemplarId: string }>;
+  /** Draf "menunggu data" yang tersimpan di perangkat (Dexie). `baca` dipanggil di dalam `liveQuery`. */
+  drafMenunggu: {
+    semua: () => Promise<DrafMenungguRow[]>;
+    baca: (ids: string[]) => Promise<DrafMenungguRow[]>;
+    simpan: (row: DrafMenungguRow) => Promise<void>;
+    hapus: (id: string) => Promise<void>;
+  };
   /** Nomor Induk dan keadaan sinkron Eksemplar; dibaca di dalam `liveQuery` supaya reaktif. */
   bacaEksemplar: (ids: string[]) => Promise<{ id: string; nomorInduk: string | null; menungguSinkron: boolean }[]>;
 };
 
 type Kartu = Omit<KartuScan, "label" | "nomorInduk" | "nomorIndukTampil" | "menungguSinkron">;
-
-function catatanGagal(e: unknown): string {
-  if (e instanceof Error && e.name === "LoginDiperlukanError") {
-    return "Sesi login habis. Masuk lagi untuk mencari metadata, atau isi datanya manual.";
-  }
-  if (e instanceof TypeError) {
-    return "Tidak ada koneksi, jadi metadata belum bisa dicari. Isi datanya manual atau coba lagi saat online.";
-  }
-  return "Pencarian metadata gagal. Coba lagi, atau isi datanya manual.";
-}
 
 export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
   const periksaData = async (d: Partial<DataSesi>): Promise<Partial<DataSesi>> => {
@@ -122,6 +124,8 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
   };
 
   const daftar: Kartu[] = [];
+  /** Id kartu yang punya draf di Dexie (menunggu data, atau sudah dilengkapi dan belum ditinjau). */
+  const diPerangkat = new Set<string>();
   const sedangMenyimpan = new Set<string>();
   /** Terakhir kali tiap kode terlihat (kunci: ISBN-13, atau teks mentah untuk kode yang ditolak). */
   const terlihat = new Map<string, number>();
@@ -154,43 +158,68 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
     return k;
   }
 
-  /** Mencari metadata untuk kartu; apa pun hasilnya (juga galat) berakhir sebagai kartu Siap ditinjau. */
+  /** Kartu dari draf yang tersimpan di perangkat (scan offline sebelumnya). */
+  function kartuDariRow(r: DrafMenungguRow): Kartu {
+    return {
+      id: r.id,
+      isbn13: r.isbn13,
+      status: r.status,
+      judul: r.draf.judul,
+      pengarang: r.draf.pengarang[0] ?? "",
+      draf: r.draf,
+      sumber: r.sumber,
+      catatan: r.catatan,
+      bisaCobaLagi: r.bisaCobaLagi,
+      bukuId: null,
+      eksemplarId: null,
+    };
+  }
+  for (const r of (await deps.drafMenunggu.semua()).sort((a, b) => a.dicatat - b.dicatat)) {
+    daftar.push(kartuDariRow(r));
+    diPerangkat.add(r.id);
+  }
+
+  async function hapusDariPerangkat(kartuId: string) {
+    if (!diPerangkat.delete(kartuId)) return;
+    await deps.drafMenunggu.hapus(kartuId);
+  }
+
+  /**
+   * Mencari metadata untuk kartu. Sukses atau "tidak ditemukan" berakhir Siap
+   * ditinjau. Tanpa koneksi (atau login habis) kartu menjadi "Menunggu data" dan
+   * drafnya disimpan di perangkat supaya dilengkapi saat online.
+   */
   async function cari(kartuId: string, isbn13: string) {
+    let keadaan: KeadaanMetadata;
     try {
-      const hasil = await opsi.cariMetadata(isbn13);
-      if (hasil.ditemukan) {
-        ubahKartu(kartuId, {
-          status: "siap",
-          draf: hasil.draf,
-          judul: hasil.draf.judul,
-          pengarang: hasil.draf.pengarang[0] ?? "",
-          sumber: hasil.sumber,
-          catatan: null,
-          bisaCobaLagi: false,
-        });
-        return;
-      }
-      ubahKartu(kartuId, {
-        status: "siap",
-        draf: drafKosong(isbn13),
-        judul: "",
-        pengarang: "",
-        sumber: hasil.sumber,
-        bisaCobaLagi: hasil.semuaGalat,
-        catatan: hasil.semuaGalat
-          ? "Sumber metadata tidak bisa dihubungi. Coba lagi sebentar lagi, atau isi datanya manual."
-          : `ISBN ${isbn13} belum ada di Open Library, Google Books, maupun Library of Congress. Isi datanya manual, ISBN sudah terisi.`,
-      });
+      keadaan = dariHasil(isbn13, await opsi.cariMetadata(isbn13));
     } catch (e) {
-      ubahKartu(kartuId, {
-        status: "siap",
-        draf: drafKosong(isbn13),
-        judul: "",
-        pengarang: "",
-        sumber: [],
-        bisaCobaLagi: true,
-        catatan: catatanGagal(e),
+      keadaan = dariGalat(isbn13, e);
+    }
+    if (!daftar.some((k) => k.id === kartuId)) return; // dibuang selagi mencari
+    ubahKartu(kartuId, {
+      status: keadaan.status,
+      draf: keadaan.draf,
+      judul: keadaan.draf.judul,
+      pengarang: keadaan.draf.pengarang[0] ?? "",
+      sumber: keadaan.sumber,
+      catatan: keadaan.catatan,
+      bisaCobaLagi: keadaan.bisaCobaLagi,
+    });
+    if (keadaan.status === "menunggu-data") {
+      diPerangkat.add(kartuId);
+      await deps.drafMenunggu.simpan({
+        id: kartuId,
+        isbn13,
+        status: "menunggu-data",
+        draf: keadaan.draf,
+        sumber: keadaan.sumber,
+        catatan: keadaan.catatan,
+        bisaCobaLagi: keadaan.bisaCobaLagi,
+        dicatat: deps.now().getTime(),
       });
+    } else {
+      await hapusDariPerangkat(kartuId);
     }
   }
 
@@ -203,7 +232,16 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
   async function bacaKartu(): Promise<KartuScan[]> {
     const ids = daftar.flatMap((k) => (k.eksemplarId ? [k.eksemplarId] : []));
     const eksemplar = new Map((await deps.bacaEksemplar(ids)).map((e) => [e.id, e]));
-    return daftar.map((k) => {
+    // Draf di perangkat bisa dilengkapi di luar sesi (saat online): ambil keadaannya yang terbaru.
+    const row = new Map(
+      (await deps.drafMenunggu.baca(daftar.filter((k) => diPerangkat.has(k.id)).map((k) => k.id))).map((r) => [r.id, r]),
+    );
+    return daftar.map((kartuMemori) => {
+      const r = row.get(kartuMemori.id);
+      const k =
+        r && (kartuMemori.status === "menunggu-data" || kartuMemori.status === "siap")
+          ? { ...kartuMemori, ...kartuDariRow(r), bukuId: null, eksemplarId: null }
+          : kartuMemori;
       const e = k.eksemplarId ? eksemplar.get(k.eksemplarId) : undefined;
       return {
         ...k,
@@ -265,6 +303,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
       if (k.status === "tersimpan") throw new Error("Kartu yang sudah tersimpan tidak bisa dibuang");
       daftar.splice(daftar.indexOf(k), 1);
       beritahu();
+      void hapusDariPerangkat(kartuId);
     },
 
     /** Kartu sesi ini, urut dari yang pertama dipindai. */
@@ -310,6 +349,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
       sedangMenyimpan.add(kartuId);
       try {
         const hasil = await deps.simpanDraf(draf, { kategoriId, ...data });
+        await hapusDariPerangkat(kartuId);
         ubahKartu(kartuId, {
           status: "tersimpan",
           ...hasil,

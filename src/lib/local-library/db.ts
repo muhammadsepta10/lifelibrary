@@ -3,6 +3,7 @@ import type { JenisAturan } from "@/lib/kelola-protocol";
 import type { FieldBuku, FieldEksemplar, KontributorDto } from "@/lib/buku-fields";
 import type { PenyianganDto } from "@/lib/penyiangan-protocol";
 import type { Mutasi } from "@/lib/sync-protocol";
+import type { DrafBuku, StatusSumber } from "@/lib/draf-buku";
 
 export type KategoriRow = {
   id: string;
@@ -69,6 +70,25 @@ export type LogRow = {
   pesan: string;
 };
 
+/**
+ * Draf hasil scan ISBN yang metadatanya belum bisa dicari (offline, atau sesi
+ * login habis). Tersimpan di perangkat sampai Pencarian Metadata berhasil
+ * ("siap": menunggu ditinjau Pemilik) dan sampai Pemilik menyimpan atau
+ * membuangnya (ADR 0004). Bukan bagian outbox: belum ada yang dikirim ke server.
+ */
+export type DrafMenungguRow = {
+  /** Id kartu di Sesi Penerimaan. */
+  id: string;
+  isbn13: string;
+  status: "menunggu-data" | "siap";
+  draf: DrafBuku;
+  sumber: StatusSumber[];
+  catatan: string | null;
+  bisaCobaLagi: boolean;
+  /** Epoch milidetik, jam perangkat; urutan kartu saat dimuat ulang. */
+  dicatat: number;
+};
+
 export type MetaRow = { key: string; value: string | null };
 
 export const bukuKosong = (): Omit<FieldBuku, "judul"> => ({
@@ -106,6 +126,7 @@ export class LocalDb extends Dexie {
   outbox!: EntityTable<OutboxRow, "seq">;
   meta!: EntityTable<MetaRow, "key">;
   log!: EntityTable<LogRow, "id">;
+  drafMenunggu!: EntityTable<DrafMenungguRow, "id">;
 
   constructor(name: string) {
     super(name);
@@ -135,5 +156,6 @@ export class LocalDb extends Dexie {
           .modify((e) => Object.assign(e, eksemplarKosong(), { ...e }));
       });
     this.version(4).stores({ log: "id, pada" });
+    this.version(5).stores({ drafMenunggu: "id, isbn13, status, dicatat" });
   }
 }
