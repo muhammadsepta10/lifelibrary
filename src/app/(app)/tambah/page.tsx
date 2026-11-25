@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useLibrary } from "@/components/app/library-provider";
@@ -40,6 +41,14 @@ export default function TambahPage() {
   return (
     <>
       <PageHeader judul="Tambah Buku" keterangan="Tersimpan di perangkat, dikirim saat online" />
+      <div className="px-5 pt-5">
+        <Link
+          href="/tambah/isbn"
+          className="flex h-12 items-center justify-center rounded-2xl border border-input bg-white px-5 text-sm font-semibold"
+        >
+          Cari lewat ISBN (ketik atau scan USB)
+        </Link>
+      </div>
       <form onSubmit={simpan} noValidate className="flex flex-col gap-5 p-5">
         <div>
           <label htmlFor="judul" className="mb-1.5 block text-sm font-medium">
