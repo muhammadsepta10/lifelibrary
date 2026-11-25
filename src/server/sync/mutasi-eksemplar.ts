@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { NAMA_FIELD_EKSEMPLAR } from "@/lib/buku-fields";
 import type { Mutasi } from "@/lib/sync-protocol";
 import { buku, eksemplar, kategori, lokasi } from "@/server/db/schema";
@@ -49,6 +49,8 @@ export async function catatEksemplar(
     harga: e.harga ?? null,
     kondisi: e.kondisi ?? null,
     lokasiId: e.lokasiId ?? null,
+    // Eksemplar baru belum pernah dicetak: langsung masuk Antrean Cetak.
+    perluCetak: true,
   });
   return diterima({ eksemplarId: e.id, nomorInduk });
 }
@@ -77,6 +79,18 @@ export async function ubahEksemplar(
       .set({ ...set, fieldWaktu: tandaiWaktu(ada.fieldWaktu, disebut, m.waktuUbah), updatedAt: sekarangServer })
       .where(eq(eksemplar.id, m.eksemplarId));
   }
+  return diterima();
+}
+
+/** Pemilik menandai Label sudah tercetak; Eksemplar yang tidak dikenal dilewati. */
+export async function tandaiTercetak(
+  tx: Tx,
+  m: Extract<Mutasi, { jenis: "eksemplar.tandaiTercetak" }>,
+): Promise<HasilTanpaId> {
+  await tx
+    .update(eksemplar)
+    .set({ perluCetak: false, updatedAt: sekarangServer })
+    .where(inArray(eksemplar.id, m.eksemplarIds));
   return diterima();
 }
 

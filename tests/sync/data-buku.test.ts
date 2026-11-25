@@ -106,7 +106,7 @@ describe("API Sinkronisasi: data Buku dan Eksemplar lengkap", () => {
       harga: 95000,
       kondisi: "baik",
       lokasiId: lokasi.id,
-      perluCetak: false,
+      perluCetak: true, // Eksemplar baru belum pernah dicetak
     });
   });
 
@@ -351,6 +351,9 @@ describe("API Sinkronisasi: ubah Eksemplar dan koreksi Kategori", () => {
 
   it("koreksi Kategori yang sama tidak menandai perlu cetak", async () => {
     const { eksemplarId } = await sudahTersinkron();
+    await api.push({
+      mutasi: [{ id: uuid(), jenis: "eksemplar.tandaiTercetak", eksemplarIds: [eksemplarId], waktuUbah: WAKTU }],
+    });
 
     await api.push({ mutasi: [koreksi(eksemplarId, KATEGORI_ID.FIK)] });
 

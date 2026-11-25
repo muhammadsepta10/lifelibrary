@@ -1,8 +1,9 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { NAMA_FIELD_BUKU } from "@/lib/buku-fields";
 import { gabungKontributor, normalisasiNama, periksaPengarangUtama } from "@/lib/kontributor";
+import { hitungNomorPanggil } from "@/lib/local-library/nomor-panggil";
 import type { Mutasi } from "@/lib/sync-protocol";
-import { buku, bukuKontributor, kontributor } from "@/server/db/schema";
+import { buku, bukuKontributor, eksemplar, kategori, kontributor } from "@/server/db/schema";
 import { sekarangServer } from "@/server/kelola/galat";
 import { diterima, ditolak, tandaiWaktu, type HasilTanpaId } from "./hasil";
 import type { Tx } from "./tx";
@@ -83,9 +84,34 @@ export async function tambahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.tamba
   return diterima();
 }
 
+/**
+ * Nomor Panggil tiap Eksemplar sebuah Buku menurut data tersimpan saat ini
+ * (kategori, Pengarang Utama, judul), untuk mendeteksi perubahan Nomor Panggil.
+ */
+async function nomorPanggilEksemplar(tx: Tx, bukuId: string) {
+  const [b] = await tx.select({ judul: buku.judul }).from(buku).where(eq(buku.id, bukuId));
+  const daftar = await tx
+    .select({ nama: kontributor.nama, utama: bukuKontributor.utama })
+    .from(bukuKontributor)
+    .innerJoin(kontributor, eq(kontributor.id, bukuKontributor.kontributorId))
+    .where(eq(bukuKontributor.bukuId, bukuId))
+    .orderBy(bukuKontributor.urutan);
+  const pengarangUtama = (daftar.find((k) => k.utama) ?? daftar[0])?.nama ?? "";
+  const rows = await tx
+    .select({ id: eksemplar.id, kode: kategori.kode })
+    .from(eksemplar)
+    .innerJoin(kategori, eq(kategori.id, eksemplar.kategoriId))
+    .where(eq(eksemplar.bukuId, bukuId));
+  return new Map(
+    rows.map((e) => [e.id, hitungNomorPanggil({ kodeKategori: e.kode, pengarangUtama, judul: b.judul }).teks]),
+  );
+}
+
 export async function ubahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.ubah" }>): Promise<HasilTanpaId> {
   const [ada] = await tx.select().from(buku).where(eq(buku.id, m.bukuId));
   if (!ada) return ditolak("Buku tidak ditemukan di server");
+  const memengaruhiNomorPanggil = m.perubahan.judul !== undefined || m.perubahan.kontributor !== undefined;
+  const nomorPanggilLama = memengaruhiNomorPanggil ? await nomorPanggilEksemplar(tx, m.bukuId) : null;
 
   const { kontributor: daftar, ...field } = m.perubahan;
   if (field.isbn13 && (await isbnDipakaiLain(tx, field.isbn13, m.bukuId))) {
@@ -113,6 +139,17 @@ export async function ubahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.ubah" }
       .update(buku)
       .set({ ...set, fieldWaktu: tandaiWaktu(ada.fieldWaktu, disebut, m.waktuUbah), updatedAt: sekarangServer })
       .where(eq(buku.id, m.bukuId));
+  }
+  if (nomorPanggilLama) {
+    // Nomor Panggil berubah: Label lama tidak berlaku lagi, Eksemplar masuk Antrean Cetak.
+    const baru = await nomorPanggilEksemplar(tx, m.bukuId);
+    const berubah = [...baru].filter(([id, teks]) => nomorPanggilLama.get(id) !== teks).map(([id]) => id);
+    if (berubah.length > 0) {
+      await tx
+        .update(eksemplar)
+        .set({ perluCetak: true, updatedAt: sekarangServer })
+        .where(inArray(eksemplar.id, berubah));
+    }
   }
   return diterima();
 }

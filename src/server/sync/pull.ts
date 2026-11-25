@@ -1,5 +1,15 @@
 import { asc, eq, gt, inArray } from "drizzle-orm";
-import { aturanKategori, buku, bukuKontributor, eksemplar, kategori, kontributor, lokasi } from "@/server/db/schema";
+import {
+  aturanKategori,
+  buku,
+  bukuKontributor,
+  eksemplar,
+  kategori,
+  kontributor,
+  lokasi,
+  templateLabel,
+} from "@/server/db/schema";
+import { templateDariRow } from "@/server/kelola/template-label";
 import type { Db } from "@/server/db/types";
 import type { AturanKategoriDto, BukuDto, EksemplarDto, KategoriDto, LokasiDto, PullResponse } from "@/lib/sync-protocol";
 
@@ -23,6 +33,10 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     .from(aturanKategori)
     .where(sejak ? gt(aturanKategori.updatedAt, sejak) : undefined)
     .orderBy(asc(aturanKategori.updatedAt));
+  const templateRows = await db
+    .select()
+    .from(templateLabel)
+    .where(sejak ? gt(templateLabel.updatedAt, sejak) : undefined);
   const bukuRows = await db
     .select()
     .from(buku)
@@ -113,7 +127,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     perluCetak: e.perluCetak,
   }));
 
-  const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...bukuRows, ...eksemplarRows]
+  const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...templateRows, ...bukuRows, ...eksemplarRows]
     .map((r) => r.updatedAt.getTime())
     .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
 
@@ -122,6 +136,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     kategori: kategoriDto,
     lokasi: lokasiDto,
     aturanKategori: aturanDto,
+    templateLabel: templateRows[0] ? templateDariRow(templateRows[0]) : null,
     buku: bukuDto,
     eksemplar: eksemplarDto,
   };

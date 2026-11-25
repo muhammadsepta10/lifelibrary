@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -151,8 +152,12 @@ export const eksemplar = pgTable(
     /** Rupiah utuh. */
     harga: integer("harga"),
     kondisi: text("kondisi"),
-    /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Dibaca Antrean Cetak. */
-    perluCetak: boolean("perlu_cetak").notNull().default(false),
+    /**
+     * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak),
+     * kembali benar saat Nomor Panggil berubah, salah setelah Pemilik menandai
+     * tercetak. Dibaca Antrean Cetak.
+     */
+    perluCetak: boolean("perlu_cetak").notNull().default(true),
     /** Lihat `buku.fieldWaktu`. */
     fieldWaktu: jsonb("field_waktu").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
     updatedAt: serverTime("updated_at"),
@@ -176,4 +181,17 @@ export const syncMutasi = pgTable("sync_mutasi", {
   id: uuid("id").primaryKey(),
   hasil: jsonb("hasil").notNull(),
   diterimaPada: timestamp("diterima_pada", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Template Label milik Pemilik (satu baris, id tetap `utama`); ukuran dalam mm. */
+export const templateLabel = pgTable("template_label", {
+  id: text("id").primaryKey(),
+  kertas: text("kertas").notNull(),
+  w: doublePrecision("w").notNull(),
+  h: doublePrecision("h").notNull(),
+  mt: doublePrecision("mt").notNull(),
+  ml: doublePrecision("ml").notNull(),
+  gx: doublePrecision("gx").notNull(),
+  gy: doublePrecision("gy").notNull(),
+  updatedAt: serverTime("updated_at"),
 });

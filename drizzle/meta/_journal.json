@@ -22,6 +22,13 @@
       "when": 1795529715710,
       "tag": "0002_data_buku_lengkap",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795574085115,
+      "tag": "0003_cetak_label",
+      "breakpoints": true
     }
   ]
 }
