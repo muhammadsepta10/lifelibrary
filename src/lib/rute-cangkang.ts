@@ -3,7 +3,7 @@
  * aman disimpan di cache dan dibuka saat browser dimulai tanpa koneksi
  * (ADR 0004). Service Worker menyimpannya setelah aplikasi dibuka online
  * (pesan dari halaman, karena rute di balik login tidak bisa di-precache
- * saat install). Tes `rute-cangkang` memastikan daftar ini mencakup setiap
+ * saat install). `pnpm check:build` memastikan daftar ini mencakup setiap
  * halaman di `src/app/(app)`.
  */
 export const RUTE_CANGKANG = [

@@ -1,7 +1,7 @@
 /**
  * Pemindai barcode (ZXing, WASM) memuat berkas `.wasm` dari jsDelivr secara
  * bawaan, sehingga scan tidak jalan offline. Kita menyajikannya dari
- * `public/zxing/` (disalin dari paket `zxing-wasm`; tes menjaga agar hash-nya
+ * `public/zxing/` (disalin dari paket `zxing-wasm`; `pnpm check:build` menjaga agar hash-nya
  * sama dengan yang diharapkan `barcode-detector`) dan Service Worker
  * menyimpannya lewat precache.
  */

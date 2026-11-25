@@ -12,6 +12,7 @@
     "e2e": "pnpm build && playwright test",
     "test:local": "vitest run --project local",
     "test:sync": "vitest run --project sync",
+    "check:build": "tsx scripts/check-build.mts",
     "test:pdf": "vitest run --config vitest.pdf.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",

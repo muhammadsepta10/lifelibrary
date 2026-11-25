@@ -94,7 +94,7 @@ describe("Walking skeleton: Perpustakaan Lokal + API Sinkronisasi", () => {
     expect(koleksi[0].nomorInduk).toBe("FIK-001/2026");
   });
 
-  it("respons hilang di jalan: push diulang dari outbox, server tidak menggandakan data", async () => {
+  it("respons hilang di jalan: perubahan yang menunggu diulang kirim, server tidak menggandakan data", async () => {
     const lib = perangkat();
     await lib.tambahBukuManual({ judul: "A", pengarang: "B", kategoriId: FIK.id });
     const putus: SyncTransport = {

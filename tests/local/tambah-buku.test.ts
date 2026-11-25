@@ -66,12 +66,21 @@ describe("Perpustakaan Lokal: tambah Buku manual", () => {
     expect(koleksi[0]).toMatchObject({ bukuId, eksemplarId });
   });
 
-  it("perintah offline masuk outbox sebagai perubahan yang menunggu dikirim", async () => {
+  it("perintah offline tersimpan lokal dan baru dikirim (Buku lalu Eksemplarnya) saat Sinkronisasi", async () => {
     await lib.tambahBukuManual({ judul: "A", pengarang: "B", kategoriId: FIK.id });
     await lib.tambahBukuManual({ judul: "C", pengarang: "D", kategoriId: FIK.id });
-
-    expect((await lib.statusSinkronisasi()).menunggu).toBeGreaterThan(0);
     expect(await lib.daftarKoleksi()).toHaveLength(2);
+    const terkirim: string[] = [];
+
+    await lib.sinkronkan({
+      push: async (req) => {
+        terkirim.push(...req.mutasi.map((m) => m.jenis));
+        return { hasil: req.mutasi.map((m) => ({ id: m.id, status: "diterima" as const })) };
+      },
+      pull: async () => ({ kursor: null, kategori: [], lokasi: [], aturanKategori: [], templateLabel: null, buku: [], eksemplar: [] }),
+    });
+
+    expect(terkirim).toEqual(["buku.tambah", "eksemplar.catat", "buku.tambah", "eksemplar.catat"]);
   });
 
   it("menambah Eksemplar kedua untuk Buku yang sama, juga wajib berkategori", async () => {

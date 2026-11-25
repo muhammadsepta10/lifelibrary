@@ -94,7 +94,7 @@ describe("Antrean Cetak", () => {
     expect(await lib.jumlahAntreanCetak()).toEqual({ total: 2, siapDicetak: 2, menungguNomorInduk: 0 });
   });
 
-  it("menandai tercetak mengeluarkan Eksemplar dari antrean dan mengirimkannya lewat outbox", async () => {
+  it("menandai tercetak mengeluarkan Eksemplar dari antrean dan mengirimkannya saat Sinkronisasi", async () => {
     const a = await eksemplarSiap("Laut Bercerita", "Leila S. Chudori");
     const b = await eksemplarSiap("Bumi Manusia", "Pramoedya Ananta Toer");
     const { transport, terkirim } = server();
