@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalLibrary, type KartuScan, type LocalLibrary } from "@/lib/local-library";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
 import { drafKosong, type DrafBuku, type HasilPencarianMetadata } from "@/lib/draf-buku";
-import type { PullResponse, SyncTransport } from "@/lib/sync-protocol";
+import type { PullResponse } from "@/lib/sync-protocol";
 
 const FIK = PRESET_KATEGORI.find((k) => k.kode === "FIK")!;
 // ISBN-13 sah berawalan 978 (dari fixture metadata).

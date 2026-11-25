@@ -164,7 +164,7 @@ export function DrafBukuForm({
         <img src={urlSampul(draf.sampul)} alt={`Sampul ${draf.judul || "buku"}`} className="h-40 w-auto self-start rounded-xl border border-input" />
       )}
 
-      <p className="font-mono text-sm">ISBN {draf.isbn13}</p>
+      {draf.isbn13 ? <p className="font-mono text-sm">ISBN {draf.isbn13}</p> : <p className="text-sm text-ink-muted">Buku tanpa ISBN</p>}
 
       {teks("judul", "Judul", { field: "judul" })}
 

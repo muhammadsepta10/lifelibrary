@@ -41,7 +41,13 @@ export default function TambahPage() {
   return (
     <>
       <PageHeader judul="Tambah Buku" keterangan="Tersimpan di perangkat, dikirim saat online" />
-      <div className="px-5 pt-5">
+      <div className="flex flex-col gap-3 px-5 pt-5">
+        <Link
+          href="/tambah/sesi"
+          className="flex h-12 items-center justify-center rounded-2xl bg-forest px-5 text-sm font-semibold text-paper"
+        >
+          Sesi Penerimaan: scan kamera beruntun
+        </Link>
         <Link
           href="/tambah/isbn"
           className="flex h-12 items-center justify-center rounded-2xl border border-input bg-white px-5 text-sm font-semibold"
