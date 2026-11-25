@@ -23,6 +23,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { status, online } = useLibrary();
   const menunggu = status?.menunggu ?? 0;
+  const gagal = status?.ditolak ?? 0;
+  // Badge Sinkron: jumlah Menunggu Sinkron; "!" merah bila hanya ada yang Gagal terkirim.
+  const badge = menunggu > 0 ? String(menunggu) : gagal > 0 ? "!" : null;
+  const warnaBadge = gagal > 0 ? "bg-bahaya text-white" : "bg-menunggu text-menunggu-fg";
 
   return (
     <div className="flex min-h-screen flex-1 flex-col lg:pl-64">
@@ -41,9 +45,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Icon className="size-5" strokeWidth={1.9} aria-hidden />
             {label}
-            {"badge" in rest && menunggu > 0 && (
-              <span className="ml-auto rounded-full bg-menunggu px-2 text-xs font-semibold text-menunggu-fg">
-                {menunggu}
+            {"badge" in rest && badge && (
+              <span
+                data-testid="badge-sinkron"
+                className={cn("ml-auto rounded-full px-2 text-xs font-semibold", warnaBadge)}
+              >
+                {badge}
               </span>
             )}
           </Link>
@@ -87,9 +94,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             >
               <Icon className="size-5" strokeWidth={1.9} aria-hidden />
-              {"badge" in rest && menunggu > 0 && (
-                <span className="absolute right-0 top-0.5 min-w-4 rounded-full bg-menunggu px-1 text-center text-[10px] font-bold text-menunggu-fg">
-                  {menunggu}
+              {"badge" in rest && badge && (
+                <span
+                  data-testid="badge-sinkron"
+                  className={cn(
+                    "absolute right-0 top-0.5 min-w-4 rounded-full px-1 text-center text-[10px] font-bold",
+                    warnaBadge,
+                  )}
+                >
+                  {badge}
                 </span>
               )}
             </Link>
