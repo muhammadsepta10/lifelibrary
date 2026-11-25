@@ -10,8 +10,16 @@ import {
 import type { TemplateLabel } from "./label/template-label";
 import type { AturanKategoriDto, KategoriDto, LokasiDto } from "./kelola-protocol";
 import type { PenyianganDto } from "./penyiangan-protocol";
+import {
+  peminjamanBaruSchema,
+  peminjamSchema,
+  perubahanPeminjamanSchema,
+  perubahanPeminjamSchema,
+  type PeminjamanDto,
+  type PeminjamDto,
+} from "./peminjaman-protocol";
 
-export type { AturanKategoriDto, KategoriDto, LokasiDto };
+export type { AturanKategoriDto, KategoriDto, LokasiDto, PeminjamanDto, PeminjamDto };
 
 /**
  * Kontrak antara Perpustakaan Lokal (klien) dan API Sinkronisasi (server).
@@ -86,6 +94,34 @@ export const mutasiSchema = z.discriminatedUnion("jenis", [
     kategoriId: uuid,
     waktuUbah: waktuPerangkat,
   }),
+  /**
+   * Peminjaman baru. Peminjam ikut dikirim supaya mutasi berdiri sendiri: dibuat
+   * di server bila belum ada, dibiarkan bila sudah ada. Server menolak bila
+   * Eksemplar sudah dipinjam (dan belum kembali).
+   */
+  z.object({
+    id: uuid,
+    jenis: z.literal("peminjaman.pinjamkan"),
+    waktuUbah: waktuPerangkat,
+    peminjam: peminjamSchema,
+    peminjaman: peminjamanBaruSchema,
+  }),
+  /** Perpanjang (jatuh tempo baru) atau kembalikan (tanggal kembali); per field, yang terbaru menang. */
+  z.object({
+    id: uuid,
+    jenis: z.literal("peminjaman.ubah"),
+    peminjamanId: uuid,
+    waktuUbah: waktuPerangkat,
+    perubahan: perubahanPeminjamanSchema,
+  }),
+  /** Mengoreksi nama atau kontak Peminjam (mis. nomor WhatsApp salah ketik). */
+  z.object({
+    id: uuid,
+    jenis: z.literal("peminjam.ubah"),
+    peminjamId: uuid,
+    waktuUbah: waktuPerangkat,
+    perubahan: perubahanPeminjamSchema,
+  }),
 ]);
 
 export const pushRequestSchema = z.object({
@@ -142,6 +178,9 @@ export type PullResponse = {
   templateLabel: TemplateLabel | null;
   buku: BukuDto[];
   eksemplar: EksemplarDto[];
+  /** Opsional supaya pemanggil lama (tes, perangkat yang belum diperbarui) tetap valid. */
+  peminjam?: PeminjamDto[];
+  peminjaman?: PeminjamanDto[];
 };
 
 /** Jalur yang dipakai klien untuk bicara ke server (fetch di app, API langsung di tes). */
