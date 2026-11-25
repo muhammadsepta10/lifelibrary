@@ -6,6 +6,7 @@ import { buatPanggil, GalatSumber, type Panggil } from "./http";
 import { cariLoc } from "./loc";
 import { cariOpenLibrary } from "./open-library";
 import type { Parsial } from "./parsial";
+import { unduhDanSimpanSampul } from "./sampul";
 
 export type MetadataOptions = {
   /** fetch yang dipakai; tes memberi fetch palsu tanpa jaringan. */
@@ -16,9 +17,6 @@ export type MetadataOptions = {
   /** Batas waktu per sumber dan per unduhan sampul. */
   timeoutMs?: number;
 };
-
-const JENIS_SAMPUL: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
-const MAKS_BYTE_SAMPUL = 5 * 1024 * 1024;
 
 const dalamBatas = <T>(janji: Promise<T>, ms: number): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -59,19 +57,8 @@ export function createMetadataLookup(opts: MetadataOptions) {
   /** Unduh sampul kandidat pertama yang valid dan simpan; kegagalan tidak pernah menggagalkan pencarian. */
   async function simpanSampul(isbn13: string, kandidat: { url: string; sumber: SumberMetadata }[]) {
     for (const { url, sumber } of kandidat) {
-      try {
-        const res = await panggil(url, { redirect: "follow" });
-        const jenis = res.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? "";
-        const ekstensi = JENIS_SAMPUL[jenis];
-        if (!res.ok || !ekstensi) continue;
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (bytes.length === 0 || bytes.length > MAKS_BYTE_SAMPUL) continue;
-        const kunci = `${isbn13}.${ekstensi}`;
-        await opts.coverStore.put(kunci, bytes, jenis);
-        return { kunci, sumber };
-      } catch {
-        // coba kandidat berikutnya
-      }
+      const kunci = await unduhDanSimpanSampul(panggil, opts.coverStore, isbn13, url);
+      if (kunci) return { kunci, sumber };
     }
     return null;
   }
