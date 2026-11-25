@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:local": "vitest run --project local",
     "test:sync": "vitest run --project sync",
+    "test:pdf": "vitest run --config vitest.pdf.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:seed-owner": "tsx scripts/seed-owner.mts"

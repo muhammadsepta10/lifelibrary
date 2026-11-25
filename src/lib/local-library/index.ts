@@ -707,7 +707,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   }
 
   /** Semua Eksemplar aktif sebagai bahan Label, urut menurut waktu dicatat (terlama dulu). */
-  async function bacaBahanCetak(): Promise<(ItemAntrean & { perluCetak: boolean })[]> {
+  async function bacaBahanCetak(): Promise<{ item: ItemAntrean; perluCetak: boolean }[]> {
     const [eksemplar, buku, kategori] = await Promise.all([
       db.eksemplar.toArray(),
       db.buku.toArray(),
@@ -726,21 +726,23 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         const bisaDicetak = e.nomorInduk !== null;
         return [
           {
-            eksemplarId: e.id,
-            bukuId: b.id,
-            judul: b.judul,
-            pengarang: utama?.nama ?? "",
-            kategori: { kode: k.kode, nama: k.nama, warna: k.warna },
-            nomorInduk: e.nomorInduk,
-            nomorPanggil: hitungNomorPanggil({
-              kodeKategori: k.kode,
-              pengarangUtama: utama?.nama ?? "",
-              judul: b.judul,
-            }),
-            waktuDicatat: e.waktuDicatat,
-            bisaDicetak,
-            alasanTidakBisa: bisaDicetak ? null : ALASAN_BELUM_PUNYA_NOMOR_INDUK,
             perluCetak: e.perluCetak,
+            item: {
+              eksemplarId: e.id,
+              bukuId: b.id,
+              judul: b.judul,
+              pengarang: utama?.nama ?? "",
+              kategori: { kode: k.kode, nama: k.nama, warna: k.warna },
+              nomorInduk: e.nomorInduk,
+              nomorPanggil: hitungNomorPanggil({
+                kodeKategori: k.kode,
+                pengarangUtama: utama?.nama ?? "",
+                judul: b.judul,
+              }),
+              waktuDicatat: e.waktuDicatat,
+              bisaDicetak,
+              alasanTidakBisa: bisaDicetak ? null : ALASAN_BELUM_PUNYA_NOMOR_INDUK,
+            },
           },
         ];
       });
@@ -748,9 +750,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
 
   /** Eksemplar yang Labelnya belum dicetak (atau perlu dicetak ulang). */
   async function bacaAntreanCetak(): Promise<ItemAntrean[]> {
-    return (await bacaBahanCetak())
-      .filter((i) => i.perluCetak)
-      .map(({ perluCetak: _perluCetak, ...item }) => item);
+    return (await bacaBahanCetak()).filter((b) => b.perluCetak).map((b) => b.item);
   }
 
   async function bacaJumlahAntrean(): Promise<JumlahAntreanCetak> {
@@ -806,7 +806,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   async function rencanaCetak(input: InputRencanaCetak): Promise<RencanaCetak> {
     await siap;
     const template = input.template ?? (await bacaTemplateTersimpan());
-    const bahan = new Map((await bacaBahanCetak()).map((i) => [i.eksemplarId, i]));
+    const bahan = new Map((await bacaBahanCetak()).map((b) => [b.item.eksemplarId, b.item]));
     const pilihan = [...new Set(input.eksemplarIds)].flatMap((id) => {
       const i = bahan.get(id);
       return i ? [i] : [];
@@ -828,8 +828,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   /** Mencetak hanya bisa online: offline gagal dengan `ButuhKoneksiError` ("Butuh koneksi"). */
   async function siapkanCetak(input: InputRencanaCetak & { online: boolean }): Promise<RencanaCetak> {
     if (!input.online) throw new ButuhKoneksiError();
-    const { online: _online, ...rencana } = input;
-    return rencanaCetak(rencana);
+    return rencanaCetak({
+      eksemplarIds: input.eksemplarIds,
+      posisiAwal: input.posisiAwal,
+      template: input.template,
+      halamanUji: input.halamanUji,
+    });
   }
 
   function pantau<T>(baca: () => Promise<T>, cb: (nilai: T) => void) {

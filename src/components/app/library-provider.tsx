@@ -5,6 +5,7 @@ import {
   createLocalLibrary,
   type DaftarLokal,
   type ItemKoleksi,
+  type JumlahAntreanCetak,
   type KategoriRow,
   type LocalLibrary,
   type StatusSinkronisasi,
@@ -21,6 +22,8 @@ type Ctx = {
   kategori: KategoriRow[] | undefined;
   /** Salinan lokal Kategori (termasuk arsip), Lokasi, dan Aturan Kategori. */
   daftar: DaftarLokal | undefined;
+  /** Antrean Cetak: `siapDicetak` = "Label siap dicetak". */
+  jumlahCetak: JumlahAntreanCetak | undefined;
   /** Perintah kelola; hanya berhasil saat online (ADR 0004). */
   kelola: ReturnType<LocalLibrary["kelola"]> | null;
   keadaan: KeadaanSinkron;
@@ -44,6 +47,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [koleksi, setKoleksi] = useState<ItemKoleksi[]>();
   const [status, setStatus] = useState<StatusSinkronisasi>();
   const [daftar, setDaftar] = useState<DaftarLokal>();
+  const [jumlahCetak, setJumlahCetak] = useState<JumlahAntreanCetak>();
   const [keadaan, setKeadaan] = useState<KeadaanSinkron>({ jenis: "diam" });
   const [online, setOnline] = useState(true);
   const penjadwal = useRef<ReturnType<typeof buatPenjadwal> | null>(null);
@@ -51,7 +55,12 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const lib = library;
     if (!lib) return;
-    const berhenti = [lib.pantauKoleksi(setKoleksi), lib.pantauStatus(setStatus), lib.pantauDaftar(setDaftar)];
+    const berhenti = [
+      lib.pantauKoleksi(setKoleksi),
+      lib.pantauStatus(setStatus),
+      lib.pantauDaftar(setDaftar),
+      lib.pantauJumlahAntreanCetak(setJumlahCetak),
+    ];
     penjadwal.current = buatPenjadwal({ library: lib, transport: fetchTransport, onKeadaan: setKeadaan });
 
     const picu = () => void penjadwal.current?.picu();
@@ -84,8 +93,8 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const sinkronkan = useCallback(() => void penjadwal.current?.picu(), []);
 
   const value = useMemo(
-    () => ({ library, koleksi, status, kategori, daftar, kelola, keadaan, online, sinkronkan }),
-    [library, koleksi, status, kategori, daftar, kelola, keadaan, online, sinkronkan],
+    () => ({ library, koleksi, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, sinkronkan }),
+    [library, koleksi, status, kategori, daftar, jumlahCetak, kelola, keadaan, online, sinkronkan],
   );
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }

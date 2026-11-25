@@ -11,7 +11,7 @@ import { authClient } from "@/lib/auth-client";
 
 export default function LainnyaPage() {
   const router = useRouter();
-  const { library, daftar, online } = useLibrary();
+  const { library, daftar, online, jumlahCetak } = useLibrary();
   const { data: sesi } = authClient.useSession();
   const [bekerja, setBekerja] = useState(false);
 
@@ -42,6 +42,17 @@ export default function LainnyaPage() {
             <ChevronRight className={`size-5 text-ink-muted ${online ? "ml-auto" : ""}`} aria-hidden />
           </Link>
         ))}
+      </section>
+      <section className="flex flex-col gap-3 p-5 pb-0">
+        <Link href="/cetak" className={`${kartuCls} flex h-14 items-center gap-3 px-4 text-sm font-semibold`}>
+          Cetak Label
+          {jumlahCetak !== undefined && (
+            <span className="font-mono text-[13px] text-ink-muted" data-testid="jumlah-cetak">
+              {jumlahCetak.siapDicetak}
+            </span>
+          )}
+          <ChevronRight className="ml-auto size-5 text-ink-muted" aria-hidden />
+        </Link>
       </section>
       <section className="flex flex-col gap-3 p-5">
         <button

@@ -34,7 +34,7 @@ function Tiket({ bukuId, e }: { bukuId: string; e: EksemplarDetail }) {
             <span className="rounded-full bg-paper px-2 py-1 text-xs font-medium">{LABEL_KONDISI[e.kondisi]}</span>
           )}
         </div>
-        {e.perluCetak && <p className="mt-2 text-xs font-medium text-kategori-fg">Label perlu dicetak ulang</p>}
+        {e.perluCetak && <p className="mt-2 text-xs font-medium text-kategori-fg">Label di Antrean Cetak</p>}
       </Link>
     </li>
   );

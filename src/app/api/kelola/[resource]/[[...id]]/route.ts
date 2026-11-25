@@ -15,12 +15,24 @@ type Ctx = { params: Promise<{ resource: string; id?: string[] }> };
 
 const STATUS = { "tidak-valid": 422, konflik: 409, "tidak-ditemukan": 404 } as const;
 
-async function tangani(request: Request, { params }: Ctx, aksi: "buat" | "ubah" | "hapus") {
+async function tangani(request: Request, { params }: Ctx, aksi: "buat" | "ubah" | "hapus" | "simpan") {
   const tolak = await tolakJikaBukanPemilik(request);
   if (tolak) return tolak;
 
   const { resource, id: segmen } = await params;
   const { kelola } = runtime();
+
+  // Template Label: satu per koleksi, disimpan dengan PUT /api/kelola/template-label.
+  if (aksi === "simpan") {
+    if (resource !== "template-label" || segmen) {
+      return Response.json({ galat: "Tidak ditemukan" }, { status: 404 });
+    }
+    try {
+      return Response.json(await kelola.templateLabel.simpan((await request.json()) as never));
+    } catch (e) {
+      return galatKelola(e);
+    }
+  }
   const target =
     resource === "kategori"
       ? kelola.kategori
@@ -45,20 +57,22 @@ async function tangani(request: Request, { params }: Ctx, aksi: "buat" | "ubah" 
     const body: unknown = await request.json();
     return Response.json(aksi === "buat" ? await t.buat(body) : await t.ubah(id!, body));
   } catch (e) {
-    if (e instanceof KelolaDitolakError) {
-      return Response.json(
-        { galat: e.pesan, jenis: e.jenis, field: e.field },
-        { status: STATUS[e.jenis] },
-      );
-    }
-    if (e instanceof SyntaxError) {
-      return Response.json({ galat: "Permintaan tidak valid" }, { status: 400 });
-    }
-    console.error("kelola gagal", e);
-    return Response.json({ galat: "Gagal menyimpan" }, { status: 500 });
+    return galatKelola(e);
   }
 }
 
+function galatKelola(e: unknown) {
+  if (e instanceof KelolaDitolakError) {
+    return Response.json({ galat: e.pesan, jenis: e.jenis, field: e.field }, { status: STATUS[e.jenis] });
+  }
+  if (e instanceof SyntaxError) {
+    return Response.json({ galat: "Permintaan tidak valid" }, { status: 400 });
+  }
+  console.error("kelola gagal", e);
+  return Response.json({ galat: "Gagal menyimpan" }, { status: 500 });
+}
+
+export const PUT = (r: Request, c: Ctx) => tangani(r, c, "simpan");
 export const POST = (r: Request, c: Ctx) => tangani(r, c, "buat");
 export const PATCH = (r: Request, c: Ctx) => tangani(r, c, "ubah");
 export const DELETE = (r: Request, c: Ctx) => tangani(r, c, "hapus");
