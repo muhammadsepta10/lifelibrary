@@ -2,7 +2,7 @@ import type { DrafBuku, HasilPencarianMetadata, SumberMetadata, StatusSumber } f
 import type { CoverStore } from "@/server/covers";
 import { gabungkan, URUTAN_SUMBER } from "./gabung";
 import { cariGoogleBooks } from "./google-books";
-import { buatPanggil, GalatSumber, type Panggil } from "./http";
+import { buatPanggil, dalamBatas, GalatSumber, type Panggil } from "./http";
 import { cariLoc } from "./loc";
 import { cariOpenLibrary } from "./open-library";
 import type { Parsial } from "./parsial";
@@ -16,14 +16,6 @@ export type MetadataOptions = {
   coverStore: CoverStore;
   /** Batas waktu per sumber dan per unduhan sampul. */
   timeoutMs?: number;
-};
-
-const dalamBatas = <T>(janji: Promise<T>, ms: number): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const habis = new Promise<never>((_, tolak) => {
-    timer = setTimeout(() => tolak(new GalatSumber("Sumber terlalu lama menjawab (timeout)")), ms);
-  });
-  return Promise.race([janji, habis]).finally(() => clearTimeout(timer));
 };
 
 /**

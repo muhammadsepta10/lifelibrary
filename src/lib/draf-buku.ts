@@ -79,6 +79,37 @@ export type HasilPencarianMetadata =
       semuaGalat: boolean;
     };
 
+/**
+ * Kandidat pencarian cadangan lewat judul (ADR 0007): satu terbitan yang
+ * mungkin edisi lain dari buku di tangan Pemilik. Field bibliografisnya
+ * berbentuk sama dengan draf (hanya yang diketahui sumber yang ada). Tidak
+ * pernah diterapkan otomatis, dan tidak membawa ISBN.
+ */
+export type Kandidat = {
+  /** Stabil: sumber + kunci sumber, mis. `openlibrary:OL23233727W`. */
+  id: string;
+  sumber: SumberMetadata;
+  judul: string;
+  pengarang?: string[];
+  penerbit?: string;
+  kota?: string;
+  tahun?: number;
+  edisi?: string;
+  seri?: string;
+  jilid?: string;
+  penerjemah?: string[];
+  editor?: string[];
+  halaman?: number;
+  bahasa?: string;
+  sinopsis?: string;
+  subjek?: string[];
+  kelasDdc?: string;
+  /** Alamat sampul di situs sumber, untuk pratinjau dan unduhan oleh server. */
+  sampulUrl?: string;
+};
+
+export type HasilKandidat = { kandidat: Kandidat[]; sumber: StatusSumber[] };
+
 export function drafKosong(isbn13: string): DrafBuku {
   return {
     isbn13,
