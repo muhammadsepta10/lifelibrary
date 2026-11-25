@@ -369,6 +369,8 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
    * draf kosong yang dilengkapi manual) sebagai Buku baru + Eksemplar pertama.
    * Pengarang pertama menjadi Pengarang Utama.
    */
+  const namaBersih = (daftar: string[] | undefined) => (daftar ?? []).map((n) => n.trim()).filter(Boolean);
+
   async function simpanDraf(draf: DrafBuku, eksemplar: { kategoriId: string } & InputFieldEksemplar) {
     const nama = draf.pengarang.map((n) => n.trim()).filter(Boolean);
     if (!draf.judul.trim()) throw new ValidasiError("judul", "Judul wajib diisi");
@@ -378,6 +380,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       penerbit: draf.penerbit,
       kota: draf.kota,
       tahun: draf.tahun,
+      // Draf yang tersimpan sebelum field ini ada tidak memuatnya.
+      edisi: draf.edisi ?? null,
+      seri: draf.seri ?? null,
+      jilid: draf.jilid ?? null,
       halaman: draf.halaman,
       bahasa: draf.bahasa,
       sinopsis: draf.sinopsis,
@@ -385,7 +391,11 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       subjek: draf.subjek,
       kelasDdc: draf.kelasDdc,
       isbn13: draf.isbn13,
-      kontributor: nama.map((n, i) => ({ nama: n, peran: "pengarang" as const, utama: i === 0 })),
+      kontributor: [
+        ...nama.map((n, i) => ({ nama: n, peran: "pengarang" as const, utama: i === 0 })),
+        ...namaBersih(draf.penerjemah).map((n) => ({ nama: n, peran: "penerjemah" as const })),
+        ...namaBersih(draf.editor).map((n) => ({ nama: n, peran: "editor" as const })),
+      ],
       eksemplar,
     });
   }

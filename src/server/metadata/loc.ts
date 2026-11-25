@@ -56,6 +56,22 @@ export async function cariLoc(panggil: Panggil, isbn13: string): Promise<Parsial
   hasil.judul = judul && subjudul ? `${judul}: ${subjudul}` : judul;
   const pengarang = urutanNormalNama(sub(ambil("100")[0], "a"));
   if (pengarang) hasil.pengarang = [pengarang];
+  const edisi = rapikan(sub(ambil("250")[0], "a"));
+  if (edisi) hasil.edisi = edisi;
+  // Seri: 490 (keterangan seri di buku) lebih dulu, 830 (entri seri terkendali) bila tidak ada.
+  const bidangSeri = ambil("490")[0] ?? ambil("830")[0];
+  hasil.seri = rapikan(sub(bidangSeri, "a"));
+  hasil.jilid = rapikan(sub(bidangSeri, "v"));
+  // Peran di 700 $e ("translator.", "editor."); tanpa $e = pengarang tambahan, tidak dipakai di sini.
+  const peran = (kata: RegExp) =>
+    ambil("700")
+      .filter((f) => kata.test(sub(f, "e") ?? ""))
+      .map((f) => urutanNormalNama(sub(f, "a")))
+      .filter((n): n is string => !!n);
+  const penerjemah = peran(/translator/i);
+  const editor = peran(/editor/i);
+  if (penerjemah.length) hasil.penerjemah = penerjemah;
+  if (editor.length) hasil.editor = editor;
   hasil.kota = rapikan(sub(terbit, "a"));
   hasil.penerbit = rapikan(sub(terbit, "b"));
   hasil.tahun = ambilTahun(sub(terbit, "c"));

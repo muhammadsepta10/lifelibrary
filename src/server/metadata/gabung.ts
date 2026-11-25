@@ -35,6 +35,11 @@ export function gabungkan(isbn13: string, hasil: Hasil): DrafBuku {
   draf.penerbit = pilih("penerbit") ?? null;
   draf.kota = pilih("kota") ?? null;
   draf.tahun = pilih("tahun") ?? null;
+  draf.edisi = pilih("edisi") ?? null;
+  draf.seri = pilih("seri") ?? null;
+  draf.jilid = pilih("jilid") ?? null;
+  draf.penerjemah = pilih("penerjemah") ?? [];
+  draf.editor = pilih("editor") ?? [];
   draf.halaman = pilih("halaman") ?? null;
   draf.bahasa = pilih("bahasa") ?? null;
   draf.sinopsis = pilih("sinopsis") ?? null;
