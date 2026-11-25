@@ -8,7 +8,12 @@ import {
   type KelolaTransport,
   type LokasiDto,
 } from "@/lib/kelola-protocol";
+import { susunBukuInduk, type BarisBukuInduk } from "@/lib/buku-induk";
+import type { PenyianganDto, PenyianganInput, PenyianganTransport } from "@/lib/penyiangan-protocol";
 import type { Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
+import { saringKoleksi, type KriteriaKoleksi } from "./cari-koleksi";
+import { hitungStatistik } from "./statistik";
+import { idEksemplarDipinjam } from "./status-koleksi";
 import {
   bukuKosong,
   eksemplarKosong,
@@ -27,6 +32,10 @@ import { isoLokal } from "./waktu";
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
 export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
+export { saringKoleksi, normalisasiTeks, type KriteriaKoleksi } from "./cari-koleksi";
+export { STATUS_KOLEKSI, LABEL_STATUS_KOLEKSI, type StatusKoleksi } from "./status-koleksi";
+export type { Statistik } from "./statistik";
+export type { BarisBukuInduk } from "@/lib/buku-induk";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -53,6 +62,16 @@ export type ItemKoleksi = {
   nomorPanggil: NomorPanggil;
   menungguSinkron: boolean;
   waktuDicatat: string;
+  kategoriId: string;
+  lokasi: { id: string; nama: string } | null;
+  isbn13: string | null;
+  sampul: string | null;
+  /** Semua nama Kontributor (bukan hanya Pengarang Utama); bahan pencarian. */
+  kontributor: string[];
+  /** `keluar` setelah Penyiangan. `daftarKoleksi` hanya memuat yang aktif. */
+  status: "aktif" | "keluar";
+  /** Sedang dipinjam; lihat `idEksemplarDipinjam` (titik sambung tiket Peminjaman). */
+  dipinjam: boolean;
 };
 
 export type InputKontributor = { nama: string; peran?: Peran; utama?: boolean };
@@ -77,6 +96,7 @@ export type EksemplarDetail = {
   nomorIndukTampil: string;
   menungguSinkron: boolean;
   status: "aktif" | "keluar";
+  penyiangan: PenyianganDto | null;
   kategori: { id: string; kode: string; nama: string; warna: string };
   nomorPanggil: NomorPanggil;
   lokasi: { id: string; nama: string } | null;
@@ -377,9 +397,26 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     });
   }
 
+  /** Koleksi aktif: Eksemplar yang sudah keluar (Penyiangan) tidak termasuk. */
   async function daftarKoleksi(): Promise<ItemKoleksi[]> {
     await siap;
-    return bacaKoleksi();
+    return bacaKoleksiAktif();
+  }
+
+  /** Cari dan filter Koleksi dari data lokal (tanpa jaringan). Lihat `KriteriaKoleksi`. */
+  async function cariKoleksi(kriteria: KriteriaKoleksi = {}): Promise<ItemKoleksi[]> {
+    await siap;
+    return saringKoleksi(await bacaKoleksi(), kriteria);
+  }
+
+  async function bukuInduk(opsi: { tahun?: number | null } = {}) {
+    await siap;
+    return bacaBukuInduk(opsi);
+  }
+
+  async function statistik() {
+    await siap;
+    return bacaStatistik();
   }
 
   async function detailBuku(bukuId: string): Promise<DetailBuku | null> {
@@ -416,6 +453,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
               nomorIndukTampil: e.nomorInduk ?? NOMOR_INDUK_KOSONG,
               menungguSinkron: e.menungguSinkron,
               status: e.status,
+              penyiangan: e.penyiangan ?? null,
               kategori: { id: k.id, kode: k.kode, nama: k.nama, warna: k.warna },
               nomorPanggil: hitungNomorPanggil({
                 kodeKategori: k.kode,
@@ -437,16 +475,21 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
 
   const pengarangUtama = (b: BukuRow) => b.kontributor.find((c) => c.utama) ?? b.kontributor[0];
 
+  const bacaKoleksiAktif = async () => (await bacaKoleksi()).filter((i) => i.status === "aktif");
+
+  /** Semua Eksemplar, termasuk yang keluar; terbaru dicatat dulu. */
   async function bacaKoleksi(): Promise<ItemKoleksi[]> {
-    const [eksemplar, buku, kategori] = await Promise.all([
+    const [eksemplar, buku, kategori, lokasi, dipinjam] = await Promise.all([
       db.eksemplar.toArray(),
       db.buku.toArray(),
       db.kategori.toArray(),
+      db.lokasi.toArray(),
+      idEksemplarDipinjam(db),
     ]);
     const bukuById = new Map(buku.map((b) => [b.id, b]));
     const katById = new Map(kategori.map((k) => [k.id, k]));
+    const lokasiById = new Map(lokasi.map((l) => [l.id, l]));
     return eksemplar
-      .filter((e) => e.status === "aktif")
       .sort((a, b) => (a.waktuDicatat < b.waktuDicatat ? 1 : a.waktuDicatat > b.waktuDicatat ? -1 : 0))
       .flatMap((e) => {
         const b = bukuById.get(e.bukuId);
@@ -469,9 +512,85 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
             }),
             menungguSinkron: e.menungguSinkron,
             waktuDicatat: e.waktuDicatat,
+            kategoriId: k.id,
+            lokasi: e.lokasiId && lokasiById.has(e.lokasiId) ? { id: e.lokasiId, nama: lokasiById.get(e.lokasiId)!.nama } : null,
+            isbn13: b.isbn13,
+            sampul: b.sampul,
+            kontributor: b.kontributor.map((c) => c.nama),
+            status: e.status,
+            dipinjam: dipinjam.has(e.id),
           },
         ];
       });
+  }
+
+  async function bacaBukuInduk(opsi: { tahun?: number | null }) {
+    const [eksemplar, buku, kategori] = await Promise.all([
+      db.eksemplar.toArray(),
+      db.buku.toArray(),
+      db.kategori.toArray(),
+    ]);
+    const bukuById = new Map(buku.map((b) => [b.id, b]));
+    const katById = new Map(kategori.map((k) => [k.id, k]));
+    const baris = eksemplar.flatMap((e): BarisBukuInduk[] => {
+      const b = bukuById.get(e.bukuId);
+      const k = katById.get(e.kategoriId);
+      if (!b || !k) return [];
+      return [
+        {
+          eksemplarId: e.id,
+          bukuId: b.id,
+          nomorInduk: e.nomorInduk,
+          judul: b.judul,
+          pengarang: pengarangUtama(b)?.nama ?? "",
+          kategori: { kode: k.kode, nama: k.nama },
+          // Tahun pencatatan = tahun lokal perangkat saat dicatat (ADR 0001), sama dengan tahun Nomor Induk.
+          tahunPencatatan: Number(e.waktuDicatat.slice(0, 4)),
+          waktuDicatat: e.waktuDicatat,
+          tanggalMasuk: e.tanggalMasuk,
+          asal: e.asal,
+          harga: e.harga,
+          status: e.status,
+          menungguSinkron: e.menungguSinkron,
+          penyiangan: e.penyiangan ?? null,
+        },
+      ];
+    });
+    return susunBukuInduk(baris, opsi);
+  }
+
+  async function bacaStatistik() {
+    const [eksemplar, kategori] = await Promise.all([db.eksemplar.toArray(), db.kategori.toArray()]);
+    return hitungStatistik(eksemplar, kategori);
+  }
+
+  /**
+   * Penyiangan: mengeluarkan Eksemplar dari koleksi aktif. Hanya online
+   * (ADR 0004): lewat `transport`, bukan outbox. Tanpa koneksi gagal dengan
+   * `ButuhKoneksiError` dan data lokal tidak berubah. Eksemplar yang masih
+   * Menunggu Sinkron belum ada di server, jadi harus disinkronkan dulu.
+   */
+  function penyiangan(transport: PenyianganTransport) {
+    return {
+      async siangi(eksemplarId: string, input: PenyianganInput) {
+        await siap;
+        const e = await db.eksemplar.get(eksemplarId);
+        if (!e) throw new ValidasiError("eksemplarId", "Eksemplar tidak ditemukan");
+        if (e.status === "keluar") throw new ValidasiError("eksemplarId", "Eksemplar ini sudah keluar dari koleksi");
+        if (e.menungguSinkron) {
+          throw new ValidasiError("eksemplarId", "Eksemplar ini belum tersinkron. Sinkronkan dulu sebelum mengeluarkannya");
+        }
+        let hasil;
+        try {
+          hasil = await transport.siangi(eksemplarId, input);
+        } catch (err) {
+          if (err instanceof TypeError) throw new ButuhKoneksiError();
+          throw err;
+        }
+        await db.eksemplar.update(eksemplarId, { status: hasil.status, penyiangan: hasil.penyiangan });
+        return hasil;
+      },
+    };
   }
 
   async function statusSinkronisasi(): Promise<StatusSinkronisasi> {
@@ -525,6 +644,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
           nomorInduk: e.nomorInduk,
           waktuDicatat: e.waktuDicatat,
           status: e.status,
+          penyiangan: e.penyiangan,
           lokasiId: e.lokasiId,
           tanggalMasuk: e.tanggalMasuk,
           asal: e.asal,
@@ -654,6 +774,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     ubahEksemplar,
     koreksiKategori,
     daftarKoleksi,
+    cariKoleksi,
+    bukuInduk,
+    statistik,
+    penyiangan,
     detailBuku,
     statusSinkronisasi,
     sinkronkan,
@@ -661,7 +785,12 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     /** Pemantau reaktif untuk UI; mengembalikan fungsi berhenti. */
     pantauDetailBuku: (bukuId: string, cb: (detail: DetailBuku | null) => void) =>
       pantau(() => bacaDetailBuku(bukuId), cb),
-    pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
+    pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksiAktif, cb),
+    /** Seluruh Eksemplar termasuk yang keluar; UI menyaringnya dengan `saringKoleksi`. */
+    pantauKoleksiSemua: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
+    pantauBukuInduk: (opsi: { tahun?: number | null }, cb: (hasil: Awaited<ReturnType<typeof bacaBukuInduk>>) => void) =>
+      pantau(() => bacaBukuInduk(opsi), cb),
+    pantauStatistik: (cb: (s: Awaited<ReturnType<typeof bacaStatistik>>) => void) => pantau(bacaStatistik, cb),
     pantauDaftar: (cb: (daftar: DaftarLokal) => void) => pantau(bacaDaftar, cb),
     pantauStatus: (cb: (status: StatusSinkronisasi) => void) => pantau(bacaStatus, cb),
   };
