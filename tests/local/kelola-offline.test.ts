@@ -17,6 +17,7 @@ const transportOffline: KelolaTransport = {
   kategori: { buat: putus, ubah: putus, hapus: putus },
   lokasi: { buat: putus, ubah: putus, hapus: putus },
   aturanKategori: { buat: putus, ubah: putus, hapus: putus },
+  templateLabel: { simpan: putus },
 };
 
 describe("Perpustakaan Lokal: kelola saat offline", () => {

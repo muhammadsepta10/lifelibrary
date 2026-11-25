@@ -19,6 +19,7 @@ const kosong: PullResponse = {
   kategori: [],
   lokasi: [],
   aturanKategori: [],
+  templateLabel: null,
   buku: [],
   eksemplar: [],
 };
@@ -343,7 +344,8 @@ describe("Koreksi Kategori", () => {
     const pertama = semua.find((e) => e.id === eksemplarId);
     const lain = semua.find((e) => e.id === kedua);
     expect(pertama).toMatchObject({ id: eksemplarId, nomorPanggil: { teks: "AGM / MUB / s" }, perluCetak: true });
-    expect(lain).toMatchObject({ id: kedua, nomorPanggil: { teks: "FIK / MUB / s" }, perluCetak: false });
+    // Eksemplar lain tidak berubah Nomor Panggilnya, jadi statusnya tidak disentuh.
+    expect(lain).toMatchObject({ id: kedua, nomorPanggil: { teks: "FIK / MUB / s" } });
   });
 
   it("menolak Kategori kosong atau tidak dikenal, dan Eksemplar yang tidak ada", async () => {
@@ -359,11 +361,13 @@ describe("Koreksi Kategori", () => {
     const { transport, terkirim } = perekam();
     await lib.sinkronkan(transport);
     terkirim.length = 0;
+    const sebelum = (await lib.detailBuku(bukuId))!.eksemplar[0].perluCetak;
 
     await lib.koreksiKategori(eksemplarId, FIK.id);
 
     expect((await lib.statusSinkronisasi()).menunggu).toBe(0);
-    expect((await lib.detailBuku(bukuId))!.eksemplar[0].perluCetak).toBe(false);
+    // Status Antrean Cetak tidak disentuh (kasus tercetak -> tetap tercetak ada di cetak-label.test.ts).
+    expect((await lib.detailBuku(bukuId))!.eksemplar[0].perluCetak).toBe(sebelum);
   });
 });
 

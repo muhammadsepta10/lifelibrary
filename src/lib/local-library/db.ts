@@ -36,7 +36,11 @@ export type EksemplarRow = FieldEksemplar & {
   waktuDicatat: string;
   status: "aktif" | "keluar";
   menungguSinkron: boolean;
-  /** Label perlu dicetak (ulang); Antrean Cetak (tiket lain) membacanya. */
+  /**
+   * Label perlu dicetak: benar sejak Eksemplar dicatat (belum pernah dicetak) dan
+   * saat Nomor Panggil berubah; salah setelah Pemilik menandai tercetak.
+   * Antrean Cetak membacanya.
+   */
   perluCetak: boolean;
 };
 
@@ -72,7 +76,8 @@ export const eksemplarKosong = (): FieldEksemplar & { perluCetak: boolean } => (
   harga: null,
   kondisi: null,
   lokasiId: null,
-  perluCetak: false,
+  // Eksemplar baru belum pernah dicetak: langsung masuk Antrean Cetak.
+  perluCetak: true,
 });
 
 export class LocalDb extends Dexie {
