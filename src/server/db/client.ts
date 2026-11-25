@@ -31,7 +31,8 @@ export function openDb(databaseUrl: string | undefined): DbHandle {
     throw new Error("DATABASE_URL wajib diisi di produksi");
   }
   mkdirSync(".data", { recursive: true });
-  const client = new PGlite(PGLITE_DIR);
+  // PGLITE_DIR: folder terpisah untuk E2E supaya data dev tidak tersentuh.
+  const client = new PGlite(process.env.PGLITE_DIR || PGLITE_DIR);
   return {
     db: drizzlePglite(client, { schema }) as unknown as Db,
     kind: "pglite",

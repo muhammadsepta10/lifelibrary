@@ -48,6 +48,7 @@ import { ButuhKoneksiError, ValidasiError } from "./errors";
 import { periksaFieldBuku, periksaFieldEksemplar, samaNilai } from "./masukan";
 import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 import { hitungSaranKategori, type MasukanSaran, type SaranKategori } from "./saran-kategori";
+import { buatSesiPenerimaan, type OpsiSesi } from "./sesi-penerimaan";
 import { isoLokal } from "./waktu";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
@@ -72,6 +73,17 @@ export type { BarisBukuInduk } from "@/lib/buku-induk";
 export { normalisasiIsbn, type HasilIsbn } from "@/lib/isbn";
 export type { MasukanSaran, SaranKategori } from "./saran-kategori";
 export { bisaSimpanDraf, type BukuDuplikat };
+export {
+  JEDA_ISBN_SAMA_MS,
+  LABEL_STATUS_KARTU,
+  NOMOR_INDUK_BELUM,
+  type DataSesi,
+  type HasilPindai,
+  type KartuScan,
+  type OpsiSesi,
+  type SesiPenerimaan,
+  type StatusKartu,
+} from "./sesi-penerimaan";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -338,6 +350,26 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       kontributor: nama.map((n, i) => ({ nama: n, peran: "pengarang" as const, utama: i === 0 })),
       eksemplar,
     });
+  }
+
+  /** Memulai Sesi Penerimaan: data sesi dipakai untuk setiap Eksemplar yang disimpan lewatnya. */
+  async function mulaiSesiPenerimaan(opsi: OpsiSesi) {
+    await siap;
+    return buatSesiPenerimaan(
+      {
+        now,
+        uuid,
+        validasiLokasi,
+        cariBukuByIsbn,
+        simpanDraf,
+        catatEksemplar,
+        bacaEksemplar: async (ids) =>
+          (await db.eksemplar.bulkGet(ids)).flatMap((e) =>
+            e ? [{ id: e.id, nomorInduk: e.nomorInduk, menungguSinkron: e.menungguSinkron }] : [],
+          ),
+      },
+      opsi,
+    );
   }
 
   /** Kontributor yang sudah dikenal di perangkat, menurut nama ternormalisasi. */
@@ -1231,6 +1263,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     sarankanKategori,
     cariBukuByIsbn,
     simpanDraf,
+    mulaiSesiPenerimaan,
     tambahBukuManual,
     tambahBuku,
     catatEksemplar,

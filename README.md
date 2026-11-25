@@ -14,6 +14,8 @@ pnpm dev
 
 Tes tidak butuh rahasia apa pun: `pnpm test` (Perpustakaan Lokal dengan `fake-indexeddb`, API Sinkronisasi dengan PGlite), `pnpm typecheck`, `pnpm lint`.
 
+Smoke test E2E (Playwright) terpisah dari `pnpm test`: `pnpm exec playwright install chromium` sekali, lalu `pnpm e2e`. Ia membangun aplikasi, menjalankan `next start` dengan PGlite di `.data/e2e/pglite` (selalu baru) dan akun Pemilik acak di `.data/e2e/env.json` (diabaikan git), tanpa Neon dan tanpa jaringan; pencarian metadata dicegat di browser. Kamera asli tidak bisa dites di CI (dipakai kamera palsu Chromium), jadi pemindaian barcode perlu dicoba di perangkat.
+
 ## Deploy ke Vercel (free tier)
 
 1. Impor repo GitHub ke Vercel. Framework: Next.js, package manager: pnpm.
