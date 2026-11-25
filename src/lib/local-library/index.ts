@@ -19,6 +19,7 @@ import { labelField } from "@/lib/label-field";
 import type { PenyianganDto, PenyianganInput, PenyianganTransport } from "@/lib/penyiangan-protocol";
 import type { FieldDitimpa, Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
 import { saringKoleksi, type KriteriaKoleksi } from "./cari-koleksi";
+import { susunRingkasanBeranda, type RingkasanBeranda } from "./beranda";
 import { hitungStatistik } from "./statistik";
 import { idEksemplarDipinjam } from "./status-koleksi";
 import {
@@ -75,6 +76,7 @@ export type {
   SelCetak,
   TidakBisaDicetak,
 } from "./cetak";
+export { susunChipBeranda, type BukuTerbaru, type ChipBeranda, type RingkasanBeranda } from "./beranda";
 export { saringKoleksi, normalisasiTeks, type KriteriaKoleksi } from "./cari-koleksi";
 export { STATUS_KOLEKSI, LABEL_STATUS_KOLEKSI, type StatusKoleksi } from "./status-koleksi";
 export type {
@@ -687,6 +689,16 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   async function cariKoleksi(kriteria: KriteriaKoleksi = {}): Promise<ItemKoleksi[]> {
     await siap;
     return saringKoleksi(await bacaKoleksi(), kriteria);
+  }
+
+  /** Angka dan Buku terbaru untuk Beranda, dari data lokal. Lihat `susunRingkasanBeranda`. */
+  async function ringkasanBeranda(): Promise<RingkasanBeranda> {
+    await siap;
+    return bacaRingkasanBeranda();
+  }
+
+  async function bacaRingkasanBeranda(): Promise<RingkasanBeranda> {
+    return susunRingkasanBeranda(await bacaKoleksi());
   }
 
   async function bukuInduk(opsi: { tahun?: number | null } = {}) {
@@ -1464,6 +1476,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     siapkanCetak,
     daftarKoleksi,
     cariKoleksi,
+    ringkasanBeranda,
     bukuInduk,
     statistik,
     penyiangan,
@@ -1495,6 +1508,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       pantau(() => bacaDetailBuku(bukuId), cb),
     pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksiAktif, cb),
     /** Seluruh Eksemplar termasuk yang keluar; UI menyaringnya dengan `saringKoleksi`. */
+    pantauRingkasanBeranda: (cb: (r: RingkasanBeranda) => void) => pantau(bacaRingkasanBeranda, cb),
     pantauKoleksiSemua: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
     pantauBukuInduk: (opsi: { tahun?: number | null }, cb: (hasil: Awaited<ReturnType<typeof bacaBukuInduk>>) => void) =>
       pantau(() => bacaBukuInduk(opsi), cb),
