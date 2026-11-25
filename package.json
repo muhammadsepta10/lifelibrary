@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "e2e": "pnpm build && playwright test",
     "test:local": "vitest run --project local",
     "test:sync": "vitest run --project sync",
     "db:generate": "drizzle-kit generate",
@@ -19,6 +20,7 @@
     "@electric-sql/pglite": "^0.6.0",
     "@neondatabase/serverless": "^1.2.1",
     "@vercel/blob": "^2.9.0",
+    "barcode-detector": "^3.2.4",
     "better-auth": "^1.7.27",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
@@ -37,6 +39,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@serwist/turbopack": "^9.5.15",
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^20",
