@@ -15,6 +15,7 @@ import {
   useDetailBuku,
 } from "@/components/app/form";
 import { useLibrary } from "@/components/app/library-provider";
+import { Penyiangan } from "@/components/app/penyiangan";
 import { PageHeader } from "@/components/app/page-header";
 import { ASAL, KONDISI, LABEL_ASAL, LABEL_KONDISI, type Asal, type Kondisi } from "@/lib/buku-fields";
 import { hitungNomorPanggil, ValidasiError, type DetailBuku, type EksemplarDetail } from "@/lib/local-library";
@@ -285,6 +286,7 @@ function Isi() {
           )}
           <FormEksemplar key={eksemplarId ?? "baru"} buku={buku} eksemplar={eksemplar} />
           {eksemplar && <KoreksiKategori buku={buku} eksemplar={eksemplar} />}
+          {eksemplar && <Penyiangan eksemplar={eksemplar} />}
         </>
       )}
     </>
