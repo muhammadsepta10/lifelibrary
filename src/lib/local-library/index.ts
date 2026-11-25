@@ -8,7 +8,8 @@ import {
   type KelolaTransport,
   type LokasiDto,
 } from "@/lib/kelola-protocol";
-import type { Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
+import { labelField } from "@/lib/label-field";
+import type { FieldDitimpa, Mutasi, PullResponse, SyncTransport } from "@/lib/sync-protocol";
 import {
   bukuKosong,
   eksemplarKosong,
@@ -17,7 +18,9 @@ import {
   type BukuRow,
   type EksemplarRow,
   type KategoriRow,
+  type LogRow,
   type LokasiRow,
+  type OutboxRow,
 } from "./db";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
 import { periksaFieldBuku, periksaFieldEksemplar, samaNilai } from "./masukan";
@@ -25,12 +28,13 @@ import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 import { isoLokal } from "./waktu";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
-export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
+export type { AturanKategoriRow, KategoriRow, LogRow, LokasiRow } from "./db";
 export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
 const META_KURSOR = "kursor";
+const LOG_MAKS = 200;
 
 export type CreateOptions = {
   /** Nama database IndexedDB; tes memberi nama unik per kasus. */
@@ -114,6 +118,41 @@ export type StatusSinkronisasi = {
   /** Jumlah perubahan yang ditolak server dan butuh perhatian Pemilik. */
   ditolak: number;
 };
+
+/** Field yang ditimpa perubahan dari perangkat lain; juga baris log halaman Sinkronisasi. */
+export type PemberitahuanDitimpa = LogRow;
+
+export type HasilSinkronisasi = {
+  dikirim: number;
+  ditolak: number;
+  /** Field yang ditimpa perubahan dari perangkat lain pada Sinkronisasi ini (untuk notifikasi). */
+  ditimpa: PemberitahuanDitimpa[];
+};
+
+/** Satu perubahan di outbox, dirangkum untuk halaman Sinkronisasi. */
+export type ItemAntrean = {
+  /** Id mutasi (juga id outbox). */
+  id: string;
+  ringkasan: string;
+  /** Alasan server menolak; hanya ada pada yang Gagal terkirim. */
+  alasan?: string;
+};
+
+export type DaftarAntrean = { tertunda: ItemAntrean[]; gagal: ItemAntrean[] };
+
+/** Field yang disentuh sebuah mutasi edit, per entitas (kunci `buku:<id>` / `eksemplar:<id>`). */
+function medanEdit(m: Mutasi): { kunci: string; fields: string[] } | null {
+  switch (m.jenis) {
+    case "buku.ubah":
+      return { kunci: `buku:${m.bukuId}`, fields: Object.keys(m.perubahan) };
+    case "eksemplar.ubah":
+      return { kunci: `eksemplar:${m.eksemplarId}`, fields: Object.keys(m.perubahan) };
+    case "eksemplar.koreksiKategori":
+      return { kunci: `eksemplar:${m.eksemplarId}`, fields: ["kategoriId", "perluCetak"] };
+    default:
+      return null;
+  }
+}
 
 /**
  * Seam: Perpustakaan Lokal. Satu-satunya pintu UI untuk membaca dan menulis
@@ -485,6 +524,58 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     return { menunggu: outbox.length - ditolak, ditolak };
   }
 
+  const KATA_JENIS: Record<Mutasi["jenis"], string> = {
+    "buku.tambah": "Tambah Buku",
+    "eksemplar.catat": "Catat Eksemplar",
+    "buku.ubah": "Ubah",
+    "eksemplar.ubah": "Ubah",
+    "eksemplar.koreksiKategori": "Koreksi Kategori",
+  };
+
+  async function ringkasan(m: Mutasi): Promise<string> {
+    if (m.jenis === "buku.tambah") return `${KATA_JENIS[m.jenis]} ${m.buku.judul}`;
+    let bukuId: string;
+    if (m.jenis === "eksemplar.catat") bukuId = m.eksemplar.bukuId;
+    else if (m.jenis === "buku.ubah") bukuId = m.bukuId;
+    else bukuId = (await db.eksemplar.get(m.eksemplarId))?.bukuId ?? "";
+    const judul = (await db.buku.get(bukuId))?.judul ?? "Buku";
+    if (m.jenis === "eksemplar.catat") return `${KATA_JENIS[m.jenis]} ${judul}`;
+    if (m.jenis === "eksemplar.koreksiKategori") return `${KATA_JENIS[m.jenis]} pada ${judul}`;
+    const labels = Object.keys(m.perubahan).map(labelField).join(", ");
+    return `Ubah ${labels} pada ${judul}`;
+  }
+
+  async function bacaAntrean(): Promise<DaftarAntrean> {
+    const hasil: DaftarAntrean = { tertunda: [], gagal: [] };
+    for (const o of await db.outbox.orderBy("seq").toArray()) {
+      const item: ItemAntrean = { id: o.id, ringkasan: await ringkasan(o.mutasi) };
+      if (o.ditolak) hasil.gagal.push({ ...item, alasan: o.ditolak });
+      else hasil.tertunda.push(item);
+    }
+    return hasil;
+  }
+
+  async function daftarAntrean(): Promise<DaftarAntrean> {
+    await siap;
+    return bacaAntrean();
+  }
+
+  /** "Coba lagi": perubahan yang Gagal terkirim (satu, atau semuanya) kembali menunggu dan ikut Sinkronisasi berikutnya. */
+  async function cobaLagi(id?: string) {
+    await siap;
+    await db.outbox
+      .filter((o: OutboxRow) => !!o.ditolak && (id === undefined || o.id === id))
+      .modify((o: OutboxRow) => {
+        delete o.ditolak;
+      });
+  }
+
+  const bacaLog = () => db.log.orderBy("pada").reverse().toArray();
+  async function logPerubahan(): Promise<LogRow[]> {
+    await siap;
+    return bacaLog();
+  }
+
   const TABEL_DAFTAR = [db.kategori, db.lokasi, db.aturanKategori];
 
   /** Tulis perubahan daftar; yang bertanda `dihapus` dibuang dari salinan lokal. */
@@ -513,29 +604,113 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     await db.aturanKategori.bulkDelete(aturan.filter((a) => a.dihapus).map((a) => a.id));
   }
 
+  /**
+   * Field yang masih punya perubahan di outbox (termasuk yang Gagal terkirim)
+   * dipertahankan: nilai lokalnya belum diterima server, jadi pull tidak boleh
+   * menggantinya.
+   */
+  async function medanTertunda() {
+    const peta = new Map<string, Set<string>>();
+    for (const o of await db.outbox.toArray()) {
+      const medan = medanEdit(o.mutasi);
+      if (!medan) continue;
+      const set = peta.get(medan.kunci) ?? new Set<string>();
+      medan.fields.forEach((f) => set.add(f));
+      peta.set(medan.kunci, set);
+    }
+    return peta;
+  }
+
+  function pertahankan<T extends object>(baru: T, lama: T | undefined, lindung: Set<string> | undefined): T {
+    if (!lama || !lindung) return baru;
+    const hasil = { ...baru } as Record<string, unknown>;
+    for (const f of lindung) if (f in lama) hasil[f] = (lama as Record<string, unknown>)[f];
+    return hasil as T;
+  }
+
   async function terapkanPull(res: PullResponse) {
-    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.meta], async () => {
+    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.meta, db.outbox], async () => {
+      const lindung = await medanTertunda();
       await tulisDaftar(res);
-      await db.buku.bulkPut(res.buku.map((b) => ({ ...b })));
+      const bukuLama = new Map((await db.buku.bulkGet(res.buku.map((b) => b.id))).map((b) => [b?.id, b]));
+      await db.buku.bulkPut(
+        res.buku.map((b) => pertahankan({ ...b }, bukuLama.get(b.id), lindung.get(`buku:${b.id}`))),
+      );
+      const eksemplarLama = new Map(
+        (await db.eksemplar.bulkGet(res.eksemplar.map((e) => e.id))).map((e) => [e?.id, e]),
+      );
       await db.eksemplar.bulkPut(
-        res.eksemplar.map((e) => ({
-          id: e.id,
-          bukuId: e.bukuId,
-          kategoriId: e.kategoriId,
-          nomorInduk: e.nomorInduk,
-          waktuDicatat: e.waktuDicatat,
-          status: e.status,
-          lokasiId: e.lokasiId,
-          tanggalMasuk: e.tanggalMasuk,
-          asal: e.asal,
-          harga: e.harga,
-          kondisi: e.kondisi,
-          perluCetak: e.perluCetak,
-          menungguSinkron: false,
-        })),
+        res.eksemplar.map((e) =>
+          pertahankan(
+            {
+              id: e.id,
+              bukuId: e.bukuId,
+              kategoriId: e.kategoriId,
+              nomorInduk: e.nomorInduk,
+              waktuDicatat: e.waktuDicatat,
+              status: e.status,
+              lokasiId: e.lokasiId,
+              tanggalMasuk: e.tanggalMasuk,
+              asal: e.asal,
+              harga: e.harga,
+              kondisi: e.kondisi,
+              perluCetak: e.perluCetak,
+              menungguSinkron: false,
+            },
+            eksemplarLama.get(e.id),
+            lindung.get(`eksemplar:${e.id}`),
+          ),
+        ),
       );
       await db.meta.put({ key: META_KURSOR, value: res.kursor });
     });
+  }
+
+  /**
+   * Field mutasi ini kalah dari perubahan perangkat lain: salinan lokal disamakan
+   * dengan nilai server dan dicatat di log. Dilewati bila Pemilik sudah membuat
+   * perubahan yang lebih baru untuk field itu (masih di outbox).
+   */
+  async function terapkanDitimpa(m: Mutasi, daftar: FieldDitimpa[]): Promise<PemberitahuanDitimpa[]> {
+    const medan = medanEdit(m);
+    if (!medan) return [];
+    const [jenis, id] = medan.kunci.split(":");
+    const lindung = (await medanTertunda()).get(medan.kunci);
+    const hasil: PemberitahuanDitimpa[] = [];
+    for (const { field, nilai } of daftar) {
+      if (lindung?.has(field)) continue;
+      let bukuId: string;
+      let eksemplarId: string | null = null;
+      let nomorInduk: string | null = null;
+      if (jenis === "buku") {
+        bukuId = id;
+        await db.buku.update(id, { [field]: nilai } as Partial<BukuRow>);
+      } else {
+        const e = await db.eksemplar.get(id);
+        if (!e) continue;
+        bukuId = e.bukuId;
+        eksemplarId = id;
+        nomorInduk = e.nomorInduk;
+        await db.eksemplar.update(id, { [field]: nilai } as Partial<EksemplarRow>);
+      }
+      const judul = (await db.buku.get(bukuId))?.judul ?? "";
+      const label = labelField(field);
+      const di = eksemplarId ? `${judul}${nomorInduk ? ` (${nomorInduk})` : ""}` : judul;
+      hasil.push({
+        id: uuid(),
+        pada: now().getTime(),
+        bukuId,
+        eksemplarId,
+        judul,
+        field,
+        label,
+        pesan: `${label} di ${di} diperbarui dari perangkat lain`,
+      });
+    }
+    await db.log.bulkAdd(hasil);
+    const lebih = (await db.log.count()) - LOG_MAKS;
+    if (lebih > 0) await db.log.orderBy("pada").limit(lebih).delete();
+    return hasil;
   }
 
   /**
@@ -543,17 +718,18 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
    * transport gagal; outbox tetap utuh dan bisa dikirim ulang dengan aman
    * karena server idempoten berdasarkan id mutasi.
    */
-  async function sinkronkan(transport: SyncTransport) {
+  async function sinkronkan(transport: SyncTransport): Promise<HasilSinkronisasi> {
     await siap;
     let dikirim = 0;
     let ditolak = 0;
+    const ditimpa: PemberitahuanDitimpa[] = [];
     for (;;) {
       const batch = (await db.outbox.orderBy("seq").toArray())
         .filter((o) => !o.ditolak)
         .slice(0, BATCH_PUSH);
       if (batch.length === 0) break;
       const res = await transport.push({ mutasi: batch.map((o) => o.mutasi) });
-      await db.transaction("rw", [db.outbox, db.eksemplar], async () => {
+      await db.transaction("rw", [db.outbox, db.eksemplar, db.buku, db.log], async () => {
         for (const h of res.hasil) {
           const entri = batch.find((o) => o.id === h.id);
           if (!entri) continue;
@@ -567,12 +743,13 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
           }
           await db.outbox.delete(entri.seq!);
           dikirim++;
+          if (h.ditimpa?.length) ditimpa.push(...(await terapkanDitimpa(entri.mutasi, h.ditimpa)));
         }
       });
     }
     const kursor = (await db.meta.get(META_KURSOR))?.value ?? null;
     await terapkanPull(await transport.pull(kursor));
-    return { dikirim, ditolak };
+    return { dikirim, ditolak, ditimpa };
   }
 
   /**
@@ -656,6 +833,9 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     daftarKoleksi,
     detailBuku,
     statusSinkronisasi,
+    daftarAntrean,
+    cobaLagi,
+    logPerubahan,
     sinkronkan,
     hapusDataPerangkat,
     /** Pemantau reaktif untuk UI; mengembalikan fungsi berhenti. */
@@ -664,6 +844,8 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     pantauKoleksi: (cb: (items: ItemKoleksi[]) => void) => pantau(bacaKoleksi, cb),
     pantauDaftar: (cb: (daftar: DaftarLokal) => void) => pantau(bacaDaftar, cb),
     pantauStatus: (cb: (status: StatusSinkronisasi) => void) => pantau(bacaStatus, cb),
+    pantauAntrean: (cb: (antrean: DaftarAntrean) => void) => pantau(bacaAntrean, cb),
+    pantauLog: (cb: (log: LogRow[]) => void) => pantau(bacaLog, cb),
   };
 }
 
