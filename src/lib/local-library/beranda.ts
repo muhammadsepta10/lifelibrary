@@ -43,7 +43,7 @@ export function susunChipBeranda(j: JumlahChip): ChipBeranda[] {
   const semua: ChipBeranda[] = [
     { kunci: "terlambat", jumlah: j.terlambat ?? 0, teks: `${j.terlambat} terlambat`, href: "/peminjaman?tab=terlambat" },
     { kunci: "label", jumlah: j.labelSiapDicetak ?? 0, teks: `${j.labelSiapDicetak} label siap dicetak`, href: "/cetak" },
-    { kunci: "menunggu", jumlah: j.menungguSinkron ?? 0, teks: `${j.menungguSinkron} menunggu sinkron`, href: "/sinkron" },
+    { kunci: "menunggu", jumlah: j.menungguSinkron ?? 0, teks: `${j.menungguSinkron} perubahan menunggu sinkron`, href: "/sinkron" },
     { kunci: "gagal", jumlah: j.gagalTerkirim ?? 0, teks: `${j.gagalTerkirim} gagal terkirim`, href: "/sinkron" },
   ];
   return semua.filter((c) => c.jumlah > 0);

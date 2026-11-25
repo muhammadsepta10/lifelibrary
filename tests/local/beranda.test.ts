@@ -105,7 +105,7 @@ describe("Chip status Beranda", () => {
 
     expect(chip).toEqual([
       { kunci: "terlambat", jumlah: 2, teks: "2 terlambat", href: "/peminjaman?tab=terlambat" },
-      { kunci: "menunggu", jumlah: 3, teks: "3 menunggu sinkron", href: "/sinkron" },
+      { kunci: "menunggu", jumlah: 3, teks: "3 perubahan menunggu sinkron", href: "/sinkron" },
       { kunci: "gagal", jumlah: 1, teks: "1 gagal terkirim", href: "/sinkron" },
     ]);
   });
