@@ -52,6 +52,11 @@ async function prosesMutasi(tx: Tx, m: Mutasi): Promise<HasilMutasi> {
   }
 
   const hasil = await terapkan(tx, m);
+  if (hasil.status === "ditolak") {
+    // Penolakan bukan mutasi yang sudah diproses: kirim ulang (Coba lagi) dinilai lagi dari awal.
+    await tx.delete(syncMutasi).where(eq(syncMutasi.id, m.id));
+    return { id: m.id, ...hasil } as HasilMutasi;
+  }
   await tx.update(syncMutasi).set({ hasil }).where(eq(syncMutasi.id, m.id));
   return { id: m.id, ...hasil } as HasilMutasi;
 }

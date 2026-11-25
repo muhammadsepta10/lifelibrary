@@ -86,8 +86,15 @@ export const pushRequestSchema = z.object({
 export type Mutasi = z.infer<typeof mutasiSchema>;
 export type PushRequest = z.infer<typeof pushRequestSchema>;
 
+/**
+ * Field dari mutasi ini yang kalah dari perubahan yang lebih baru dari perangkat
+ * lain (ADR 0004: per field, yang terbaru menang). `nilai` adalah nilai yang kini
+ * berlaku di server, supaya perangkat bisa menyamakan salinan lokalnya.
+ */
+export type FieldDitimpa = { field: string; nilai: unknown };
+
 export type HasilMutasi =
-  | { id: string; status: "diterima"; nomorInduk?: string; eksemplarId?: string }
+  | { id: string; status: "diterima"; nomorInduk?: string; eksemplarId?: string; ditimpa?: FieldDitimpa[] }
   | { id: string; status: "ditolak"; alasan: string };
 
 export type PushResponse = { hasil: HasilMutasi[] };
