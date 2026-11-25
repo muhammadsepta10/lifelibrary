@@ -1,0 +1,35 @@
+{
+  "_synthetic": true,
+  "_catatan": "FIKSI untuk tes: Google Books tidak bisa direkam (kuota harian habis tanpa kunci API). Satu hasil yang sama dengan Kandidat Open Library (Bumi, Tere Liye) dan satu yang baru, dengan sampul dari books.googleusercontent.com.",
+  "kind": "books#volumes",
+  "totalItems": 2,
+  "items": [
+    {
+      "kind": "books#volume",
+      "id": "sintetis-bumi-gpu",
+      "volumeInfo": {
+        "title": "Bumi",
+        "authors": ["Tere Liye"],
+        "publisher": "Gramedia Pustaka Utama",
+        "publishedDate": "2014-01-01",
+        "pageCount": 440,
+        "language": "id",
+        "imageLinks": { "thumbnail": "https://books.googleusercontent.com/books/content?id=sintetis-bumi-gpu&zoom=1" }
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "sintetis-bumi-ebook",
+      "volumeInfo": {
+        "title": "Bumi (Edisi Digital)",
+        "authors": ["Tere Liye"],
+        "publisher": "Republika",
+        "publishedDate": "2020-02-02",
+        "pageCount": 400,
+        "language": "id",
+        "categories": ["Fiction"],
+        "imageLinks": { "thumbnail": "http://books.google.com/books/content?id=sintetis-bumi-ebook&zoom=1" }
+      }
+    }
+  ]
+}

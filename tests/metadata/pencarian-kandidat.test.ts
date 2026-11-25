@@ -9,13 +9,23 @@ import { fakeFetch, fixture, json, type Balasan } from "../support/fake-fetch";
  */
 
 const OL_CARI = "openlibrary.org/search.json";
+const GOOGLE = "googleapis.com/books/v1/volumes";
+const KUNCI_RAHASIA = "KUNCI-TES-RAHASIA";
+const GOOGLE_DILEWATI = { sumber: "google", status: "dilewati", pesan: "Kunci API belum diatur" };
 
-const siapkan = (balas: Balasan | ((url: string) => Balasan), opsi: { timeoutMs?: number } = {}) => {
-  const ff = fakeFetch([{ cocok: OL_CARI, balas: balas as Balasan }]);
+type Jawab = Balasan | ((url: string) => Balasan);
+
+/** Tanpa `google` di opsi, kunci tidak diatur dan Google dilewati. */
+const siapkan = (balas: Jawab, opsi: { timeoutMs?: number; google?: Jawab } = {}) => {
+  const ff = fakeFetch([
+    { cocok: OL_CARI, balas: balas as Balasan },
+    ...(opsi.google ? [{ cocok: GOOGLE, balas: opsi.google as Balasan }] : []),
+  ]);
   const cari = createKandidatSearch({
     fetch: ff.fetch,
     coverStore: createMemoryCoverStore(),
     timeoutMs: opsi.timeoutMs ?? 100,
+    googleApiKey: opsi.google ? KUNCI_RAHASIA : undefined,
   });
   return { cari, ...ff };
 };
@@ -28,7 +38,7 @@ describe("Pencarian Kandidat: Open Library", () => {
 
     const { kandidat, sumber } = await cari({ judul: "Atomic Habits" });
 
-    expect(sumber).toEqual([{ sumber: "openlibrary", status: "ok" }]);
+    expect(sumber).toEqual([{ sumber: "openlibrary", status: "ok" }, GOOGLE_DILEWATI]);
     expect(kandidat).toHaveLength(5);
     expect(kandidat[0]).toMatchObject({
       id: "openlibrary:OL17930368W",
@@ -69,7 +79,7 @@ describe("Pencarian Kandidat: Open Library", () => {
 
     const hasil = await cari({ judul: "zxqvbn lorem tidak ada buku" });
 
-    expect(hasil).toEqual({ kandidat: [], sumber: [{ sumber: "openlibrary", status: "kosong" }] });
+    expect(hasil).toEqual({ kandidat: [], sumber: [{ sumber: "openlibrary", status: "kosong" }, GOOGLE_DILEWATI] });
   });
 
   it("judul umum menyempit setelah pengarang ditambahkan: permintaan memuat author dan hasilnya hanya karya pengarang itu", async () => {
@@ -114,7 +124,7 @@ describe("Pencarian Kandidat: Open Library", () => {
     const hasil = await cari({ judul: "Atomic Habits" });
 
     expect(hasil.kandidat).toEqual([]);
-    expect(hasil.sumber).toEqual([{ sumber: "openlibrary", status: "galat", pesan: expect.any(String) }]);
+    expect(hasil.sumber).toEqual([{ sumber: "openlibrary", status: "galat", pesan: expect.any(String) }, GOOGLE_DILEWATI]);
   });
 
   it("sumber yang macet melewati batas waktu menjadi galat, bukan menggantung", async () => {
@@ -125,5 +135,172 @@ describe("Pencarian Kandidat: Open Library", () => {
     expect(hasil.kandidat).toEqual([]);
     expect(hasil.sumber[0]).toMatchObject({ sumber: "openlibrary", status: "galat" });
     expect(hasil.sumber[0].pesan).toMatch(/timeout|lama/i);
+  });
+});
+
+const OL_KOSONG = json(fixture("ol-judul-tidak-ada.json"));
+
+describe("Pencarian Kandidat: Google Books", () => {
+  it("bila kunci diatur, mencari dengan intitle: (+ inauthor:), paling banyak 5, dan kunci hanya dikirim ke Google", async () => {
+    const { cari, permintaan } = siapkan(OL_KOSONG, { google: json(fixture("gb-judul-bumi-tere-liye.json")) });
+
+    await cari({ judul: "Bumi", pengarang: "Tere Liye" });
+
+    const google = permintaan.filter((p) => p.url.includes(GOOGLE));
+    expect(google).toHaveLength(1);
+    const p = parameter(google[0].url);
+    expect(p.get("q")).toBe('intitle:"Bumi" inauthor:"Tere Liye"');
+    expect(p.get("maxResults")).toBe("5");
+    expect(p.get("key")).toBe(KUNCI_RAHASIA);
+    expect(permintaan.filter((x) => x.url.includes(KUNCI_RAHASIA))).toHaveLength(1);
+  });
+
+  it("tanpa pengarang, kueri hanya intitle:", async () => {
+    const { cari, permintaan } = siapkan(OL_KOSONG, { google: json(fixture("gb-judul-bumi-tere-liye.json")) });
+
+    await cari({ judul: "Atomic Habits" });
+
+    expect(parameter(permintaan.find((p) => p.url.includes(GOOGLE))!.url).get("q")).toBe('intitle:"Atomic Habits"');
+  });
+
+  it("tanda kutip di judul tidak merusak kueri", async () => {
+    const { cari, permintaan } = siapkan(OL_KOSONG, { google: json(fixture("gb-judul-bumi-tere-liye.json")) });
+
+    await cari({ judul: 'Si "Kancil" Cerdik' });
+
+    expect(parameter(permintaan.find((p) => p.url.includes(GOOGLE))!.url).get("q")).toBe('intitle:"Si Kancil Cerdik"');
+  });
+
+  it("Kandidat Google punya id stabil, sumber google, field bibliografis, dan sampul https dari books.google.com", async () => {
+    const { cari } = siapkan(OL_KOSONG, { google: json(fixture("gb-judul-atomic-habits.json")) });
+
+    const { kandidat, sumber } = await cari({ judul: "Atomic Habits" });
+
+    expect(sumber).toEqual([
+      { sumber: "openlibrary", status: "kosong" },
+      { sumber: "google", status: "ok" },
+    ]);
+    expect(kandidat[0]).toEqual({
+      id: "google:XfFvDwAAQBAJ",
+      sumber: "google",
+      judul: "Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+      pengarang: ["James Clear"],
+      penerbit: "Penguin",
+      tahun: 2018,
+      halaman: 320,
+      bahasa: "Inggris",
+      sinopsis: "No matter your goals, Atomic Habits offers a proven framework.",
+      subjek: ["Self-Help"],
+      sampulUrl: "https://books.google.com/books/content?id=XfFvDwAAQBAJ&printsec=frontcover&img=1&zoom=1",
+    });
+    // Volume tanpa judul dibuang; yang minim tidak mengarang field.
+    expect(kandidat.map((k) => k.id)).not.toContain("google:sintetis-tanpa-judul");
+    expect(kandidat.find((k) => k.id === "google:sintetis-tanpa-pengarang")).toEqual({
+      id: "google:sintetis-tanpa-pengarang",
+      sumber: "google",
+      judul: "Atomic Habits: Panduan Belajar",
+      penerbit: "Penerbit Contoh",
+      tahun: 2020,
+    });
+    // ISBN volume tidak dibawa.
+    expect(kandidat[0]).not.toHaveProperty("isbn13");
+  });
+
+  it("kandidat dari dua sumber digabung: Open Library lebih dulu, duplikat (judul + pengarang pertama) dibuang, paling banyak 5", async () => {
+    const { cari } = siapkan(json(fixture("ol-judul-atomic-habits.json")), {
+      google: json(fixture("gb-judul-atomic-habits.json")),
+    });
+
+    const { kandidat, sumber } = await cari({ judul: "Atomic Habits" });
+
+    expect(sumber.map((s) => [s.sumber, s.status])).toEqual([
+      ["openlibrary", "ok"],
+      ["google", "ok"],
+    ]);
+    expect(kandidat).toHaveLength(5);
+    expect(kandidat.map((k) => k.sumber)).toEqual(["openlibrary", "openlibrary", "openlibrary", "openlibrary", "openlibrary"]);
+
+    // Dengan Open Library yang hanya memberi satu hasil, Google mengisi sisanya setelahnya.
+    const { kandidat: sedikit } = await siapkan(json(fixture("ol-judul-bumi-tere-liye.json")), {
+      google: json(fixture("gb-judul-atomic-habits.json")),
+    }).cari({ judul: "Bumi", pengarang: "Tere Liye" });
+    expect(sedikit.map((k) => k.id)).toEqual([
+      "openlibrary:OL23233727W",
+      // "Atomic Habits: An Easy ..." (James Clear) bukan duplikat dari judul lain mana pun.
+      "google:XfFvDwAAQBAJ",
+      "google:sintetis-kebiasaan-atomik",
+      "google:sintetis-tanpa-pengarang",
+      "google:sintetis-tanpa-sampul",
+    ]);
+  });
+
+  it("Kandidat yang sama di dua sumber (judul sama tanpa beda huruf besar atau tanda baca, pengarang pertama sama) hanya muncul sekali, versi Open Library", async () => {
+    const { cari } = siapkan(json(fixture("ol-judul-bumi-tere-liye.json")), {
+      google: json(fixture("gb-judul-bumi-tere-liye.json")),
+    });
+
+    const { kandidat } = await cari({ judul: "Bumi", pengarang: "Tere Liye" });
+
+    expect(kandidat.map((k) => k.id)).toEqual(["openlibrary:OL23233727W", "google:sintetis-bumi-ebook"]);
+    expect(kandidat[0].penerbit).toBe("PT Gramedia Pustaka Utama");
+  });
+
+  it("judul sama dengan pengarang pertama berbeda bukan duplikat", async () => {
+    const { cari } = siapkan(json(fixture("ol-judul-bumi.json")), { google: json(fixture("gb-judul-bumi-tere-liye.json")) });
+
+    const { kandidat } = await cari({ judul: "Bumi" });
+
+    expect(kandidat.map((k) => k.pengarang?.[0])).toEqual(
+      expect.arrayContaining(["Tere Liye", "Pramoedya Ananta Toer"]),
+    );
+    expect(kandidat.length).toBeLessThanOrEqual(5);
+  });
+
+  it.each([
+    ["galat HTTP", new Response("", { status: 500 })],
+    ["tidak bisa dihubungi", new Error("jaringan putus")],
+    ["macet", "macet"],
+  ] as [string, Balasan][])("Google %s: Kandidat Open Library tetap keluar dan kunci API tidak bocor ke status", async (_nama, balasan) => {
+    const { cari } = siapkan(json(fixture("ol-judul-atomic-habits.json")), { google: balasan, timeoutMs: 40 });
+
+    const hasil = await cari({ judul: "Atomic Habits" });
+
+    expect(hasil.kandidat.length).toBeGreaterThan(0);
+    expect(hasil.sumber[0]).toEqual({ sumber: "openlibrary", status: "ok" });
+    expect(hasil.sumber[1]).toMatchObject({ sumber: "google", status: "galat" });
+    expect(JSON.stringify(hasil)).not.toContain(KUNCI_RAHASIA);
+  });
+
+  it("Open Library galat: Kandidat Google tetap keluar", async () => {
+    const { cari } = siapkan(new Response("", { status: 500 }), { google: json(fixture("gb-judul-atomic-habits.json")) });
+
+    const hasil = await cari({ judul: "Atomic Habits" });
+
+    expect(hasil.kandidat.length).toBeGreaterThan(0);
+    expect(hasil.kandidat.every((k) => k.sumber === "google")).toBe(true);
+    expect(hasil.sumber[0]).toMatchObject({ sumber: "openlibrary", status: "galat" });
+    expect(hasil.sumber[1]).toEqual({ sumber: "google", status: "ok" });
+  });
+
+  it("kedua sumber kosong menghasilkan daftar kosong dengan status kosong", async () => {
+    const { cari } = siapkan(OL_KOSONG, { google: json(fixture("gb-judul-tidak-ada.json")) });
+
+    expect(await cari({ judul: "zxqvbn lorem" })).toEqual({
+      kandidat: [],
+      sumber: [
+        { sumber: "openlibrary", status: "kosong" },
+        { sumber: "google", status: "kosong" },
+      ],
+    });
+  });
+
+  it("tanpa kunci API, Google dilewati tanpa fetch dan Kandidat Open Library tetap keluar", async () => {
+    const { cari, permintaan } = siapkan(json(fixture("ol-judul-atomic-habits.json")));
+
+    const { kandidat, sumber } = await cari({ judul: "Atomic Habits" });
+
+    expect(kandidat.length).toBeGreaterThan(0);
+    expect(sumber.find((s) => s.sumber === "google")).toEqual(GOOGLE_DILEWATI);
+    expect(permintaan.some((p) => p.url.includes(GOOGLE))).toBe(false);
   });
 });

@@ -2,8 +2,14 @@ import { singletonGlobal } from "@/server/singleton";
 import { createCoverStoreFromEnv, type CoverStore } from "@/server/covers";
 import { createMetadataLookup, type MetadataLookup } from "./index";
 import { createKandidatSearch, type KandidatSearch } from "./kandidat";
+import { createSampulKandidat, type SimpanSampulKandidat } from "./sampul";
 
-type Layanan = { cariMetadataIsbn: MetadataLookup; cariKandidat: KandidatSearch; coverStore: CoverStore };
+type Layanan = {
+  cariMetadataIsbn: MetadataLookup;
+  cariKandidat: KandidatSearch;
+  simpanSampulKandidat: SimpanSampulKandidat;
+  coverStore: CoverStore;
+};
 
 /**
  * Pencarian Metadata ISBN, Pencarian Kandidat, dan storage sampul dengan
@@ -18,6 +24,7 @@ export function metadataRuntime(): Layanan {
       coverStore,
       cariMetadataIsbn: createMetadataLookup(opsi),
       cariKandidat: createKandidatSearch(opsi),
+      simpanSampulKandidat: createSampulKandidat(opsi),
     };
   });
 }

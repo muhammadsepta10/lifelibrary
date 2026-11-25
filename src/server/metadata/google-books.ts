@@ -1,3 +1,4 @@
+import type { Kandidat } from "@/lib/draf-buku";
 import { normalisasiIsbn } from "@/lib/isbn";
 import { bacaJson, type Panggil } from "./http";
 import { ambilTahun, namaBahasa, rapikan, type Parsial } from "./parsial";
@@ -58,4 +59,55 @@ export async function cariGoogleBooks(panggil: Panggil, isbn13: string, kunci: s
   const kecil = teks(rekam(v.imageLinks)?.thumbnail) ?? teks(rekam(v.imageLinks)?.smallThumbnail);
   if (kecil) hasil.sampul = [kecil.replace(/^http:\/\//, "https://")];
   return hasil;
+}
+
+const MAKS_KANDIDAT_GOOGLE = 5;
+const MAKS_SUBJEK_KANDIDAT = 20;
+
+/** Tanda kutip dibuang dari masukan supaya frasa `intitle:"..."` tidak pecah. */
+const frasa = (s: string) => s.replace(/["“”]/g, "").replace(/\s+/g, " ").trim();
+
+/**
+ * Pencarian lewat judul (+ pengarang) dengan `intitle:` dan `inauthor:`.
+ * Hasilnya Kandidat tingkat terbitan tanpa ISBN (ISBN hasil scan tidak
+ * pernah diganti). Volume tanpa judul dibuang.
+ */
+export async function cariKandidatGoogle(
+  panggil: Panggil,
+  { judul, pengarang }: { judul: string; pengarang?: string },
+  kunci: string,
+): Promise<Kandidat[]> {
+  const kueri = [`intitle:"${frasa(judul)}"`, pengarang && frasa(pengarang) ? `inauthor:"${frasa(pengarang)}"` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const params = new URLSearchParams({ q: kueri, maxResults: String(MAKS_KANDIDAT_GOOGLE), key: kunci });
+  const badan = rekam(await bacaJson(await panggil(`${URL_DASAR}?${params}`)));
+  const items = Array.isArray(badan?.items) ? badan.items : [];
+
+  const hasil: Kandidat[] = [];
+  for (const mentah of items) {
+    const item = rekam(mentah);
+    const v = rekam(item?.volumeInfo);
+    const id = teks(item?.id);
+    const utama = rapikan(teks(v?.title));
+    if (!v || !id || !utama) continue;
+    const subjudul = rapikan(teks(v.subtitle));
+    const k: Kandidat = { id: `google:${id}`, sumber: "google", judul: subjudul ? `${utama}: ${subjudul}` : utama };
+    const nama = teksArray(v.authors);
+    if (nama.length) k.pengarang = nama;
+    const subjek = teksArray(v.categories).slice(0, MAKS_SUBJEK_KANDIDAT);
+    if (subjek.length) k.subjek = subjek;
+    const kecil = teks(rekam(v.imageLinks)?.thumbnail) ?? teks(rekam(v.imageLinks)?.smallThumbnail);
+    const opsional = {
+      penerbit: rapikan(teks(v.publisher)),
+      tahun: ambilTahun(teks(v.publishedDate)),
+      halaman: typeof v.pageCount === "number" && v.pageCount > 0 ? v.pageCount : undefined,
+      sinopsis: teks(v.description)?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+      bahasa: namaBahasa(teks(v.language) ?? ""),
+      sampulUrl: kecil?.replace(/^http:\/\//, "https://"),
+    };
+    for (const [field, nilai] of Object.entries(opsional)) if (nilai !== undefined) Object.assign(k, { [field]: nilai });
+    hasil.push(k);
+  }
+  return hasil.slice(0, MAKS_KANDIDAT_GOOGLE);
 }

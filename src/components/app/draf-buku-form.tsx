@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LABEL_SUMBER, terapkanKandidat, urlSampul, type DrafBuku, type FieldDraf, type Kandidat, type StatusSumber } from "@/lib/draf-buku";
 import { bisaSimpanDraf, type SaranKategori } from "@/lib/local-library";
+import { simpanSampulKandidat } from "@/lib/sync/fetch-metadata";
 import { DaftarKandidat, useKandidat } from "./kandidat-judul";
 import { Field, inputCls, keAngka, tombolSekunderCls, tombolUtamaCls } from "./form";
 import { useLibrary } from "./library-provider";
@@ -124,6 +125,23 @@ export function DrafBukuForm({
     setDraf(baru);
     setIsi(isiBaru);
     kandidat.tutup(isiBaru.judul, isiBaru.pengarang[0] ?? "");
+    if (k.sampulUrl && !draf.sampul && draf.isbn13) void pasangSampul(draf.isbn13, k);
+  }
+
+  /** Sampul Kandidat diunduh server; gagal atau offline tidak mengganggu field teks yang sudah terisi. */
+  async function pasangSampul(isbn13: string, k: Kandidat) {
+    try {
+      const { kunci } = await simpanSampulKandidat(isbn13, k.sampulUrl!);
+      if (!kunci) return;
+      // Sampul yang sudah ada di draf tidak ditimpa (mis. Pemilik memilih Kandidat lain di sela unduhan).
+      setDraf((d) =>
+        d.sampul
+          ? d
+          : { ...d, sampul: kunci, sumber: { ...d.sumber, sampul: [k.sumber] }, dariKandidat: [...new Set([...(d.dariKandidat ?? []), "sampul" as const])] },
+      );
+    } catch {
+      // Offline atau galat: Pemilik tetap bisa lanjut tanpa sampul.
+    }
   }
   const [saran, setSaran] = useState<SaranKategori | null>(null);
   const [kat, setKat] = useState({ id: "", dikonfirmasi: false, manual: false });
@@ -205,8 +223,11 @@ export function DrafBukuForm({
 
       {draf.sampul && (
         // Sampul disajikan dari storage aplikasi, bukan hotlink.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={urlSampul(draf.sampul)} alt={`Sampul ${draf.judul || "buku"}`} className="h-40 w-auto self-start rounded-xl border border-input" />
+        <div className="flex items-end gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={urlSampul(draf.sampul)} alt={`Sampul ${draf.judul || "buku"}`} className="h-40 w-auto self-start rounded-xl border border-input" />
+          <Sumber draf={draf} field="sampul" diedit={false} />
+        </div>
       )}
 
       {draf.isbn13 ? <p className="font-mono text-sm">ISBN {draf.isbn13}</p> : <p className="text-sm text-ink-muted">Buku tanpa ISBN</p>}
