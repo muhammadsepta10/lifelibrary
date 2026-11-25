@@ -5,6 +5,7 @@ import { buku, eksemplar, kategori, lokasi } from "@/server/db/schema";
 import { sekarangServer } from "@/server/kelola/galat";
 import type { FieldDitimpa } from "@/lib/sync-protocol";
 import { bagiMenangKalah, diterima, ditolak, tandaiWaktu, type HasilTanpaId } from "./hasil";
+import { idBukuBerlaku } from "./mutasi-buku";
 import { alokasiNomorInduk } from "./nomor-induk";
 import type { Tx } from "./tx";
 
@@ -27,7 +28,9 @@ export async function catatEksemplar(
   const [ada] = await tx.select().from(eksemplar).where(eq(eksemplar.id, e.id));
   if (ada) return diterima({ eksemplarId: ada.id, nomorInduk: ada.nomorInduk ?? undefined });
 
-  const [bukunya] = await tx.select({ id: buku.id }).from(buku).where(eq(buku.id, e.bukuId));
+  // Id Buku lokal bisa sudah digantikan Buku lain yang ISBN-nya sama (ADR 0006).
+  const bukuId = await idBukuBerlaku(tx, e.bukuId);
+  const [bukunya] = await tx.select({ id: buku.id }).from(buku).where(eq(buku.id, bukuId));
   if (!bukunya) return ditolak("Buku untuk Eksemplar ini belum ada di server");
 
   // Kategori yang sudah diarsipkan tetap diterima di sini: perangkat offline bisa
@@ -51,7 +54,7 @@ export async function catatEksemplar(
   const nomorInduk = await alokasiNomorInduk(tx, kat.kode, tahun);
   await tx.insert(eksemplar).values({
     id: e.id,
-    bukuId: e.bukuId,
+    bukuId,
     kategoriId: e.kategoriId,
     nomorInduk,
     kodeKategoriSaatDicatat: kat.kode,

@@ -43,6 +43,13 @@
       "when": 1795576412227,
       "tag": "0005_peminjaman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795594418989,
+      "tag": "0006_buku_alias",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { NAMA_FIELD_BUKU } from "@/lib/buku-fields";
 import { gabungKontributor, normalisasiNama, periksaPengarangUtama } from "@/lib/kontributor";
 import { hitungNomorPanggil } from "@/lib/local-library/nomor-panggil";
 import type { Mutasi } from "@/lib/sync-protocol";
-import { buku, bukuKontributor, eksemplar, kategori, kontributor } from "@/server/db/schema";
+import { buku, bukuAlias, bukuKontributor, eksemplar, kategori, kontributor } from "@/server/db/schema";
 import { masukAntreanCetak, sekarangServer } from "@/server/kelola/galat";
 import type { FieldDitimpa } from "@/lib/sync-protocol";
 import { bagiMenangKalah, diterima, ditolak, type HasilTanpaId } from "./hasil";
@@ -52,10 +52,30 @@ const galatKontributor = (daftar: Kontributor) => {
   return galat ? ditolak(`Kontributor tidak valid: ${galat}`) : null;
 };
 
+/**
+ * Id Buku yang berlaku di server untuk id yang dikirim perangkat: id yang sama,
+ * atau Buku yang menggantikannya karena ISBN sama (ADR 0006).
+ */
+export async function idBukuBerlaku(tx: Tx, id: string): Promise<string> {
+  const [alias] = await tx.select({ bukuId: bukuAlias.bukuId }).from(bukuAlias).where(eq(bukuAlias.id, id));
+  return alias?.bukuId ?? id;
+}
+
 export async function tambahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.tambah" }>): Promise<HasilTanpaId> {
   const { kontributor: daftar, id, ...field } = m.buku;
-  if (field.isbn13 && (await isbnDipakaiLain(tx, field.isbn13, id))) {
-    return ditolak("ISBN sudah tercatat pada Buku lain");
+  const [sudahDiganti] = await tx.select({ bukuId: bukuAlias.bukuId }).from(bukuAlias).where(eq(bukuAlias.id, id));
+  if (sudahDiganti) return diterima({ bukuId: sudahDiganti.bukuId });
+  if (field.isbn13) {
+    // Dua perangkat offline menambah Buku dengan ISBN yang sama: Buku kedua tidak
+    // dibuat. Eksemplar dan perubahannya dialihkan ke Buku yang sudah ada (ADR 0006).
+    const [sama] = await tx
+      .select({ id: buku.id })
+      .from(buku)
+      .where(and(eq(buku.isbn13, field.isbn13), ne(buku.id, id)));
+    if (sama) {
+      await tx.insert(bukuAlias).values({ id, bukuId: sama.id }).onConflictDoNothing();
+      return diterima({ bukuId: sama.id });
+    }
   }
   const tolak = galatKontributor(daftar);
   if (tolak) return tolak;
@@ -109,7 +129,8 @@ async function nomorPanggilEksemplar(tx: Tx, bukuId: string) {
   );
 }
 
-export async function ubahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.ubah" }>): Promise<HasilTanpaId> {
+export async function ubahBuku(tx: Tx, mentah: Extract<Mutasi, { jenis: "buku.ubah" }>): Promise<HasilTanpaId> {
+  const m = { ...mentah, bukuId: await idBukuBerlaku(tx, mentah.bukuId) };
   const [ada] = await tx.select().from(buku).where(eq(buku.id, m.bukuId));
   if (!ada) return ditolak("Buku tidak ditemukan di server");
   const memengaruhiNomorPanggil = m.perubahan.judul !== undefined || m.perubahan.kontributor !== undefined;

@@ -139,7 +139,18 @@ export type PushRequest = z.infer<typeof pushRequestSchema>;
 export type FieldDitimpa = { field: string; nilai: unknown };
 
 export type HasilMutasi =
-  | { id: string; status: "diterima"; nomorInduk?: string; eksemplarId?: string; ditimpa?: FieldDitimpa[] }
+  | {
+      id: string;
+      status: "diterima";
+      nomorInduk?: string;
+      eksemplarId?: string;
+      /**
+       * Hanya untuk `buku.tambah` yang ISBN-nya sudah dimiliki Buku lain di server:
+       * id Buku yang berlaku, menggantikan id yang dikirim perangkat (ADR 0006).
+       */
+      bukuId?: string;
+      ditimpa?: FieldDitimpa[];
+    }
   | { id: string; status: "ditolak"; alasan: string };
 
 export type PushResponse = { hasil: HasilMutasi[] };
