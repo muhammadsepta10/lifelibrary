@@ -1,0 +1,6 @@
+{
+  "_synthetic": true,
+  "_catatan": "FIKSI untuk tes: bentuk jawaban Google Books tanpa hasil (hanya kind dan totalItems, tanpa items).",
+  "kind": "books#volumes",
+  "totalItems": 0
+}

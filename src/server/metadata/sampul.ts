@@ -1,5 +1,5 @@
 import type { CoverStore } from "@/server/covers";
-import type { Panggil } from "./http";
+import { buatPanggil, type Panggil } from "./http";
 
 const JENIS_SAMPUL: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 const MAKS_BYTE_SAMPUL = 5 * 1024 * 1024;
@@ -30,3 +30,32 @@ export async function unduhDanSimpanSampul(
     return null;
   }
 }
+
+/** Satu-satunya host sampul yang dikenal (ADR 0007): endpoint unduhan tidak boleh mengambil alamat sembarang. */
+const HOST_SAMPUL_DIIZINKAN = new Set(["covers.openlibrary.org", "books.google.com", "books.googleusercontent.com"]);
+
+/** Hanya `https` dari host sampul yang dikenal, tanpa kredensial di alamat. */
+export function urlSampulDiizinkan(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && !u.username && !u.password && HOST_SAMPUL_DIIZINKAN.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Seam: simpanSampulKandidat. Mengunduh sampul Kandidat yang dipilih Pemilik
+ * dan menyimpannya dengan kunci ISBN hasil scan. Alamat di luar host yang
+ * diizinkan ditolak sebelum ada fetch; kegagalan apa pun menghasilkan null.
+ */
+export function createSampulKandidat(opts: { fetch?: typeof fetch; coverStore: CoverStore; timeoutMs?: number }) {
+  const panggil: Panggil = buatPanggil(opts.fetch ?? fetch, opts.timeoutMs ?? 8000);
+  return async function simpanSampulKandidat({ isbn13, url }: { isbn13: string; url: string }): Promise<{ kunci: string } | null> {
+    if (!urlSampulDiizinkan(url)) return null;
+    const kunci = await unduhDanSimpanSampul(panggil, opts.coverStore, isbn13, url);
+    return kunci ? { kunci } : null;
+  };
+}
+
+export type SimpanSampulKandidat = ReturnType<typeof createSampulKandidat>;

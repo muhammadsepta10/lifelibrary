@@ -1,4 +1,6 @@
 import type { HasilKandidat, Kandidat, StatusSumber } from "@/lib/draf-buku";
+import { gabungkanKandidat } from "./gabung";
+import { cariKandidatGoogle } from "./google-books";
 import { buatPanggil, dalamBatas, GalatSumber, type Panggil } from "./http";
 import type { MetadataOptions } from "./index";
 import { cariKandidatOpenLibrary } from "./open-library";
@@ -16,8 +18,9 @@ export function createKandidatSearch(opts: MetadataOptions) {
 
   async function jalankan(
     sumber: StatusSumber["sumber"],
-    kerja: () => Promise<Kandidat[]>,
+    kerja: (() => Promise<Kandidat[]>) | null,
   ): Promise<{ status: StatusSumber; kandidat: Kandidat[] }> {
+    if (!kerja) return { status: { sumber, status: "dilewati", pesan: "Kunci API belum diatur" }, kandidat: [] };
     try {
       const kandidat = await dalamBatas(kerja(), timeoutMs);
       return { status: { sumber, status: kandidat.length ? "ok" : "kosong" }, kandidat };
@@ -29,8 +32,12 @@ export function createKandidatSearch(opts: MetadataOptions) {
 
   return async function cariKandidat({ judul, pengarang }: MasukanKandidat): Promise<HasilKandidat> {
     const masukan = { judul: judul.trim(), pengarang: pengarang?.trim() || undefined };
-    const hasil = await Promise.all([jalankan("openlibrary", () => cariKandidatOpenLibrary(panggil, masukan))]);
-    return { kandidat: hasil.flatMap((h) => h.kandidat), sumber: hasil.map((h) => h.status) };
+    const kunci = opts.googleApiKey;
+    const hasil = await Promise.all([
+      jalankan("openlibrary", () => cariKandidatOpenLibrary(panggil, masukan)),
+      jalankan("google", kunci ? () => cariKandidatGoogle(panggil, masukan, kunci) : null),
+    ]);
+    return { kandidat: gabungkanKandidat(hasil.map((h) => h.kandidat)), sumber: hasil.map((h) => h.status) };
   };
 }
 

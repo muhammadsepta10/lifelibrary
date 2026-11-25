@@ -1,10 +1,38 @@
-import { drafKosong, type DrafBuku, type FieldDraf, type SumberMetadata } from "@/lib/draf-buku";
+import { drafKosong, type DrafBuku, type FieldDraf, type Kandidat, type SumberMetadata } from "@/lib/draf-buku";
 import type { Parsial } from "./parsial";
 
 /** Urutan prioritas sumber (ADR 0003): Open Library, Google Books, Library of Congress. */
 export const URUTAN_SUMBER: readonly SumberMetadata[] = ["openlibrary", "google", "loc"];
 
 const MAKS_SUBJEK = 20;
+const MAKS_KANDIDAT = 5;
+
+/** Judul tanpa huruf besar, aksen, dan tanda baca, supaya "Atomic Habits!" dan "atomic  habits" sama. */
+const normal = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/**
+ * Menggabungkan Kandidat per sumber (sudah menurut urutan sumber, ADR 0003):
+ * yang lebih dulu menang, duplikat (judul ternormalisasi + pengarang pertama
+ * yang sama) dibuang, paling banyak 5.
+ */
+export function gabungkanKandidat(perSumber: Kandidat[][]): Kandidat[] {
+  const lihat = new Set<string>();
+  const hasil: Kandidat[] = [];
+  for (const k of perSumber.flat()) {
+    const kunci = `${normal(k.judul)}|${normal(k.pengarang?.[0] ?? "")}`;
+    if (lihat.has(kunci)) continue;
+    lihat.add(kunci);
+    hasil.push(k);
+    if (hasil.length === MAKS_KANDIDAT) break;
+  }
+  return hasil;
+}
 
 type Hasil = Partial<Record<SumberMetadata, Parsial | null>>;
 
