@@ -1,12 +1,24 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { BASE_URL, envE2E } from "./env";
 
+/**
+ * Login lewat layar Masuk. Better Auth membatasi login 3 kali per 10 detik; bila ditolak
+ * (pesan galat tampil), tunggu lalu coba lagi supaya urutan spec tidak membuat tes goyah.
+ */
 export async function masuk(page: Page) {
   const { ownerEmail, ownerPassword } = envE2E();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Kata sandi").fill(ownerPassword);
-  await page.getByRole("button", { name: "Masuk" }).click();
+  for (let percobaan = 0; percobaan < 4; percobaan++) {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(ownerEmail);
+    await page.getByLabel("Kata sandi").fill(ownerPassword);
+    await page.getByRole("button", { name: "Masuk" }).click();
+    const berhasil = await page
+      .waitForURL(BASE_URL + "/", { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (berhasil) return;
+    await page.waitForTimeout(4000);
+  }
   await expect(page).toHaveURL("/");
 }
 

@@ -13,6 +13,7 @@ export const RUTE_CANGKANG = [
   "/tambah/isbn",
   "/tambah/sesi",
   "/sinkron",
+  "/peminjaman",
   "/lainnya",
   "/lainnya/kategori",
   "/lainnya/lokasi",
