@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, notInArray, or, type SQL } from "drizzle-orm";
+import { asc, gte, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   aturanKategori,
@@ -19,52 +19,56 @@ import { muatKontributor } from "./kontributor";
 const PEMISAH = "~";
 
 /**
- * Kursor = waktu `updatedAt` terbaru yang sudah diterima, ditambah id baris yang
- * sudah diterima pada milidetik persis itu: `<ISO>` atau `<ISO>~id1,id2`.
- * Baris lain yang ditulis pada milidetik yang sama (setelah pull sebelumnya)
- * tetap terambil, dan baris yang sudah diterima tidak diulang.
+ * Jendela pengaman kursor. `updatedAt` dicap saat pernyataan jalan, bukan saat
+ * commit: baris yang dicap T1 bisa baru terlihat setelah baris yang dicap T2 > T1
+ * sudah ditarik. Karena itu pull selalu menarik ulang baris yang dicap dalam
+ * jendela ini sebelum waktu terbaru yang pernah diterima, dan kursor mengingat
+ * baris mana (id dan cap waktunya) yang sudah diterima supaya tidak diulang.
+ * Penerapan di perangkat bersifat upsert, jadi pengiriman ulang tidak berbahaya.
+ */
+export const JENDELA_KURSOR_MS = 5000;
+
+const kunci = (id: string, waktu: Date) => `${id}@${waktu.getTime()}`;
+
+/**
+ * Kursor = `<ISO waktu terbaru yang sudah diterima>~<id@ms>,<id@ms>` berisi baris
+ * yang sudah diterima di dalam jendela pengaman sebelum waktu itu.
  */
 function bacaKursor(kursor: string | null) {
   if (!kursor) return null;
-  const [iso, ids] = kursor.split(PEMISAH);
+  const [iso, daftar] = kursor.split(PEMISAH);
   const waktu = new Date(iso);
   if (Number.isNaN(waktu.getTime()) || waktu.toISOString() !== iso) throw new Error("Kursor tidak valid");
-  return { waktu, sudah: ids ? ids.split(",") : [] };
+  return { waktu, sudah: new Set(daftar ? daftar.split(",") : []) };
 }
 
 /** Perubahan sejak kursor (berdasarkan `updatedAt` server). Kursor null = semuanya. */
 export async function pull(db: Db, kursor: string | null): Promise<PullResponse> {
   const sejak = bacaKursor(kursor);
+  const batas = sejak ? new Date(sejak.waktu.getTime() - JENDELA_KURSOR_MS) : null;
 
-  const baru = (t: { id: AnyPgColumn; updatedAt: AnyPgColumn }): SQL | undefined => {
-    if (!sejak) return undefined;
-    const sama = sejak.sudah.length
-      ? and(eq(t.updatedAt, sejak.waktu), notInArray(t.id, sejak.sudah))
-      : eq(t.updatedAt, sejak.waktu);
-    return or(gt(t.updatedAt, sejak.waktu), sama);
-  };
+  const baru = (t: { updatedAt: AnyPgColumn }): SQL | undefined => (batas ? gte(t.updatedAt, batas) : undefined);
+  const belumDiterima = <R extends { id: string; updatedAt: Date }>(rows: R[]) =>
+    sejak ? rows.filter((r) => !sejak.sudah.has(kunci(r.id, r.updatedAt))) : rows;
 
-  const kategoriRows = await db.select().from(kategori).where(baru(kategori)).orderBy(asc(kategori.updatedAt));
-  const lokasiRows = await db.select().from(lokasi).where(baru(lokasi)).orderBy(asc(lokasi.updatedAt));
-  const aturanRows = await db
-    .select()
-    .from(aturanKategori)
-    .where(baru(aturanKategori))
-    .orderBy(asc(aturanKategori.updatedAt));
-  const templateRows = await db.select().from(templateLabel).where(baru(templateLabel));
-  const bukuRows = await db.select().from(buku).where(baru(buku)).orderBy(asc(buku.updatedAt));
-  const eksemplarRows = await db
-    .select()
-    .from(eksemplar)
-    .where(baru(eksemplar))
-    .orderBy(asc(eksemplar.updatedAt));
-
-  const peminjamRows = await db.select().from(peminjam).where(baru(peminjam)).orderBy(asc(peminjam.updatedAt));
-  const peminjamanRows = await db
-    .select()
-    .from(peminjaman)
-    .where(baru(peminjaman))
-    .orderBy(asc(peminjaman.updatedAt));
+  const kategoriRows = belumDiterima(
+    await db.select().from(kategori).where(baru(kategori)).orderBy(asc(kategori.updatedAt)),
+  );
+  const lokasiRows = belumDiterima(await db.select().from(lokasi).where(baru(lokasi)).orderBy(asc(lokasi.updatedAt)));
+  const aturanRows = belumDiterima(
+    await db.select().from(aturanKategori).where(baru(aturanKategori)).orderBy(asc(aturanKategori.updatedAt)),
+  );
+  const templateRows = belumDiterima(await db.select().from(templateLabel).where(baru(templateLabel)));
+  const bukuRows = belumDiterima(await db.select().from(buku).where(baru(buku)).orderBy(asc(buku.updatedAt)));
+  const eksemplarRows = belumDiterima(
+    await db.select().from(eksemplar).where(baru(eksemplar)).orderBy(asc(eksemplar.updatedAt)),
+  );
+  const peminjamRows = belumDiterima(
+    await db.select().from(peminjam).where(baru(peminjam)).orderBy(asc(peminjam.updatedAt)),
+  );
+  const peminjamanRows = belumDiterima(
+    await db.select().from(peminjaman).where(baru(peminjaman)).orderBy(asc(peminjaman.updatedAt)),
+  );
 
   const kontribusi = await muatKontributor(
     db,
@@ -118,17 +122,16 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     ...peminjamRows,
     ...peminjamanRows,
   ];
-  const terbaru = semua.reduce<number | null>((max, r) => {
-    const t = r.updatedAt.getTime();
-    return max === null || t > max ? t : max;
-  }, null);
-
   let kursorBaru = kursor;
-  if (terbaru !== null) {
-    const iso = new Date(terbaru).toISOString();
-    const diTerbaru = semua.filter((r) => r.updatedAt.getTime() === terbaru).map((r) => r.id);
-    const lanjutan = sejak && sejak.waktu.getTime() === terbaru ? sejak.sudah : [];
-    kursorBaru = [iso, [...lanjutan, ...diTerbaru].join(",")].filter(Boolean).join(PEMISAH);
+  if (semua.length > 0) {
+    const terbaruBaris = Math.max(...semua.map((r) => r.updatedAt.getTime()));
+    const terbaru = sejak ? Math.max(terbaruBaris, sejak.waktu.getTime()) : terbaruBaris;
+    const dalamJendela = (ms: number) => ms >= terbaru - JENDELA_KURSOR_MS;
+    const diterima = [
+      ...(sejak ? [...sejak.sudah] : []).filter((k) => dalamJendela(Number(k.split("@")[1]))),
+      ...semua.filter((r) => dalamJendela(r.updatedAt.getTime())).map((r) => kunci(r.id, r.updatedAt)),
+    ];
+    kursorBaru = [new Date(terbaru).toISOString(), diterima.join(",")].filter(Boolean).join(PEMISAH);
   }
 
   return {

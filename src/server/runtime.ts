@@ -4,6 +4,7 @@ import { env } from "./env";
 import { createKelolaApi, type KelolaApi } from "./kelola";
 import { createBukuIndukApi, type BukuIndukApi } from "./buku-induk";
 import { createPenyianganApi, type PenyianganApi } from "./penyiangan";
+import { singletonGlobal } from "./singleton";
 import { createSyncApi, type SyncApi } from "./sync";
 
 type Runtime = {
@@ -15,14 +16,11 @@ type Runtime = {
   bukuInduk: BukuIndukApi;
 };
 
-// globalThis supaya HMR dev tidak membuka PGlite berkali-kali.
-const g = globalThis as unknown as { __lifelibrary?: Runtime };
-
 export function runtime(): Runtime {
-  if (!g.__lifelibrary) {
+  return singletonGlobal("__lifelibrary", () => {
     const e = env();
     const handle = openDb(e.DATABASE_URL);
-    g.__lifelibrary = {
+    return {
       handle,
       auth: createAuth(handle.db, { secret: e.AUTH_SECRET, baseURL: e.BETTER_AUTH_URL }),
       sync: createSyncApi(handle.db),
@@ -30,6 +28,5 @@ export function runtime(): Runtime {
       penyiangan: createPenyianganApi(handle.db),
       bukuInduk: createBukuIndukApi(handle.db),
     };
-  }
-  return g.__lifelibrary;
+  });
 }

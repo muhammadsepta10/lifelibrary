@@ -92,6 +92,8 @@ describe("API Sinkronisasi: push", () => {
 
   it("tahun pencatatan memakai tahun lokal perangkat walau UTC sudah ganti tahun", async () => {
     // 1 Jan 2027 03:00 WIB = 31 Des 2026 20:00 UTC; perangkat di WIB mencatat 2027.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-31T20:00:00Z"));
     const { mutasi } = mutasiBukuDanEksemplar({ kode: "FIK", waktuDicatat: "2027-01-01T03:00:00+07:00" });
 
     const res = await api.push({ mutasi });

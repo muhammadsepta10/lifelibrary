@@ -223,6 +223,18 @@ export const nomorIndukCounter = pgTable(
   (t) => [primaryKey({ columns: [t.kode, t.tahun] })],
 );
 
+/**
+ * Id Buku buatan perangkat yang digantikan Buku yang sudah ada karena ISBN-13
+ * sama (ADR 0006). Mutasi berikutnya yang masih memakai id lokal itu dialihkan
+ * ke `bukuId`.
+ */
+export const bukuAlias = pgTable("buku_alias", {
+  id: uuid("id").primaryKey(),
+  bukuId: uuid("buku_id")
+    .notNull()
+    .references(() => buku.id),
+});
+
 /** Catatan mutasi yang sudah diproses; dasar idempotensi push. */
 export const syncMutasi = pgTable("sync_mutasi", {
   id: uuid("id").primaryKey(),

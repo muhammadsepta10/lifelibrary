@@ -13,6 +13,11 @@ type Isian = {
   penerbit: string;
   kota: string;
   tahun: string;
+  edisi: string;
+  seri: string;
+  jilid: string;
+  penerjemah: string;
+  editor: string;
   halaman: string;
   bahasa: string;
   sinopsis: string;
@@ -26,6 +31,12 @@ const dariDraf = (d: DrafBuku): Isian => ({
   penerbit: d.penerbit ?? "",
   kota: d.kota ?? "",
   tahun: d.tahun == null ? "" : String(d.tahun),
+  // Draf menunggu data yang tersimpan sebelum field ini ada tidak memuatnya.
+  edisi: d.edisi ?? "",
+  seri: d.seri ?? "",
+  jilid: d.jilid ?? "",
+  penerjemah: (d.penerjemah ?? []).join(", "),
+  editor: (d.editor ?? []).join(", "),
   halaman: d.halaman == null ? "" : String(d.halaman),
   bahasa: d.bahasa ?? "",
   sinopsis: d.sinopsis ?? "",
@@ -33,7 +44,7 @@ const dariDraf = (d: DrafBuku): Isian => ({
   subjek: d.subjek.join(", "),
 });
 
-const pecahSubjek = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+const pecahDaftar = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 const bersihPengarang = (p: string[]) => p.map((n) => n.trim()).filter(Boolean);
 
 const KETERANGAN_STATUS: Record<StatusSumber["status"], string> = {
@@ -83,12 +94,12 @@ export function DrafBukuForm({
   const pengarangDiedit = JSON.stringify(bersihPengarang(isi.pengarang)) !== JSON.stringify(bersihPengarang(awal.pengarang));
 
   // Saran dihitung ulang dari data lokal tiap kali masukannya berubah (Kelas DDC, subjek, pengarang).
-  const kunciSaran = JSON.stringify([isi.kelasDdc.trim(), pecahSubjek(isi.subjek), bersihPengarang(isi.pengarang)]);
+  const kunciSaran = JSON.stringify([isi.kelasDdc.trim(), pecahDaftar(isi.subjek), bersihPengarang(isi.pengarang), isi.seri.trim()]);
   useEffect(() => {
     if (!library) return;
     let batal = false;
-    const [kelasDdc, subjek, pengarang] = JSON.parse(kunciSaran) as [string, string[], string[]];
-    void library.sarankanKategori({ kelasDdc: kelasDdc || null, subjek, pengarang, seri: null }).then((s) => {
+    const [kelasDdc, subjek, pengarang, seri] = JSON.parse(kunciSaran) as [string, string[], string[], string];
+    void library.sarankanKategori({ kelasDdc: kelasDdc || null, subjek, pengarang, seri: seri || null }).then((s) => {
       if (batal) return;
       setSaran(s);
       // Saran menggantikan pilihan hanya selama Pemilik belum memilih sendiri; konfirmasi diulang bila saran berganti.
@@ -113,11 +124,16 @@ export function DrafBukuForm({
         penerbit: isi.penerbit,
         kota: isi.kota,
         tahun: keAngka(isi.tahun),
+        edisi: isi.edisi,
+        seri: isi.seri,
+        jilid: isi.jilid,
+        penerjemah: pecahDaftar(isi.penerjemah),
+        editor: pecahDaftar(isi.editor),
         halaman: keAngka(isi.halaman),
         bahasa: isi.bahasa,
         sinopsis: isi.sinopsis,
         kelasDdc: isi.kelasDdc,
-        subjek: pecahSubjek(isi.subjek),
+        subjek: pecahDaftar(isi.subjek),
       },
       kat.id,
     );
@@ -203,6 +219,11 @@ export function DrafBukuForm({
       {teks("penerbit", "Penerbit", { field: "penerbit" })}
       {teks("kota", "Kota terbit", { field: "kota" })}
       {teks("tahun", "Tahun terbit", { field: "tahun", inputMode: "numeric" })}
+      {teks("edisi", "Edisi", { field: "edisi", petunjuk: "Misalnya Cetakan pertama" })}
+      {teks("seri", "Seri", { field: "seri", petunjuk: "Buku lain dalam seri yang sama membantu menyarankan Kategori" })}
+      {teks("jilid", "Jilid", { field: "jilid" })}
+      {teks("penerjemah", "Penerjemah", { field: "penerjemah", petunjuk: "Pisahkan dengan koma" })}
+      {teks("editor", "Editor", { field: "editor", petunjuk: "Pisahkan dengan koma" })}
       {teks("halaman", "Halaman", { field: "halaman", inputMode: "numeric" })}
       {teks("bahasa", "Bahasa", { field: "bahasa" })}
       {teks("kelasDdc", "Kelas DDC", {

@@ -1,7 +1,5 @@
-import { KelolaDitolakError, type KelolaTransport } from "@/lib/kelola-protocol";
-import { LoginDiperlukanError } from "./fetch-transport";
-
-type Galat = { galat?: string; jenis?: KelolaDitolakError["jenis"]; field?: string | null };
+import type { KelolaTransport } from "@/lib/kelola-protocol";
+import { bacaRespons } from "./baca-respons";
 
 async function kirim<T>(method: string, path: string, body?: unknown): Promise<T> {
   // Tanpa jaringan fetch melempar TypeError; Perpustakaan Lokal mengubahnya jadi "Butuh koneksi".
@@ -10,11 +8,7 @@ async function kirim<T>(method: string, path: string, body?: unknown): Promise<T
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (res.status === 401) throw new LoginDiperlukanError();
-  if (res.ok) return (await res.json()) as T;
-  const galat = (await res.json().catch(() => ({}))) as Galat;
-  if (galat.jenis) throw new KelolaDitolakError(galat.jenis, galat.field ?? null, galat.galat ?? "Ditolak");
-  throw new Error(galat.galat ?? `Gagal menyimpan (${res.status})`);
+  return bacaRespons<T>(res, "Gagal menyimpan");
 }
 
 const perintah = (resource: string) => ({

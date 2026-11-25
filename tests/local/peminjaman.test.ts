@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
 import { createLocalLibrary, ValidasiError, type LocalLibrary } from "@/lib/local-library";
-import { bukuKosong } from "@/lib/local-library/db";
 import type { PullResponse, SyncTransport } from "@/lib/sync-protocol";
 
 const FIK = PRESET_KATEGORI.find((k) => k.kode === "FIK")!;
@@ -299,7 +298,19 @@ describe("Perpustakaan Lokal: scan Label Barcode", () => {
             id: bukuId,
             judul: "Pulang",
             kontributor: [{ id: crypto.randomUUID(), nama: "Leila", peran: "pengarang", utama: true }],
-            ...bukuKosong(),
+            penerbit: null,
+            kota: null,
+            tahun: null,
+            edisi: null,
+            seri: null,
+            jilid: null,
+            bahasa: null,
+            halaman: null,
+            sinopsis: null,
+            sampul: null,
+            subjek: [],
+            kelasDdc: null,
+            isbn13: null,
           },
         ],
         eksemplar: [

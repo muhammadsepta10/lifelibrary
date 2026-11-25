@@ -8,7 +8,7 @@ import {
 } from "@/lib/kelola-protocol";
 import { aturanKategori, eksemplar, kategori } from "@/server/db/schema";
 import type { Db } from "@/server/db/types";
-import { idValid, parse, pelanggaranUnik, sekarangServer, tidakDitemukan } from "./galat";
+import { idValid, masukAntreanCetak, parse, pelanggaranUnik, sekarangServer, tidakDitemukan } from "./galat";
 
 type Row = typeof kategori.$inferSelect;
 
@@ -73,12 +73,22 @@ export function kategoriApi(db: Db): KelolaTransport["kategori"] {
         await pastikanKodeBebas(db, kode, id);
       }
       try {
-        const [k] = await db
-          .update(kategori)
-          .set({ ...data, updatedAt: sekarangServer })
-          .where(eq(kategori.id, id))
-          .returning();
-        return dto(k);
+        return await db.transaction(async (tx) => {
+          const [k] = await tx
+            .update(kategori)
+            .set({ ...data, updatedAt: sekarangServer })
+            .where(eq(kategori.id, id))
+            .returning();
+          if (data.kode !== undefined && data.kode !== sekarang.kode) {
+            // Kode Kategori ada di Nomor Panggil: Label semua Eksemplar aktifnya
+            // jadi usang. Nomor Induk tidak berubah (ADR 0001).
+            await tx
+              .update(eksemplar)
+              .set(masukAntreanCetak())
+              .where(and(eq(eksemplar.kategoriId, id), eq(eksemplar.status, "aktif")));
+          }
+          return dto(k);
+        });
       } catch (e) {
         if (pelanggaranUnik(e)) throw kodeBentrok();
         throw e;

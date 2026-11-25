@@ -45,6 +45,10 @@ export async function cariGoogleBooks(panggil: Panggil, isbn13: string, kunci: s
   const pengarang = teksArray(v.authors);
   if (pengarang.length) hasil.pengarang = pengarang;
   hasil.penerbit = teks(v.publisher);
+  // seriesInfo hanya ada pada sebagian volume: judul pendek seri dan nomor tampilnya.
+  const infoSeri = rekam(v.seriesInfo);
+  hasil.seri = rapikan(teks(infoSeri?.shortSeriesBookTitle));
+  hasil.jilid = teks(infoSeri?.bookDisplayNumber);
   hasil.tahun = ambilTahun(teks(v.publishedDate));
   hasil.halaman = typeof v.pageCount === "number" && v.pageCount > 0 ? v.pageCount : undefined;
   hasil.sinopsis = teks(v.description)?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();

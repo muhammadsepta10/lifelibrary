@@ -133,6 +133,15 @@ describe("Pencarian Metadata ISBN: buku asli Indonesia tanpa DDC", () => {
     expect(draf.sumber.halaman).toEqual(["openlibrary"]);
   });
 
+  it("edisi dibaca dari Library of Congress (bidang 250); seri dan jilid kosong karena sumbernya tidak memuatnya", async () => {
+    const { cari } = siapkan(lautBercerita);
+
+    const { draf } = await ditemukan(cari(LAUT));
+
+    expect(draf).toMatchObject({ edisi: "Cetakan pertama", seri: null, jilid: null, penerjemah: [], editor: [] });
+    expect(draf.sumber.edisi).toEqual(["loc"]);
+  });
+
   it("subjek diambil dari kategori Google Books bila ada (fixture sintetis)", async () => {
     const { cari } = siapkan({ ...lautBercerita, [GOOGLE]: json(fixture("gb-sintetis-9786024246945.json")) });
 

@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { nomorIndukCounter } from "@/server/db/schema";
 import type { Tx } from "./tx";
 
 /** `{KODE}-{urut 3 digit, melebar bila > 999}/{tahun}` (ADR 0001). */
@@ -13,11 +14,13 @@ export function formatNomorInduk(kode: string, urut: number, tahun: number) {
  * kalau transaksi pemanggil dibatalkan.
  */
 export async function alokasiNomorInduk(tx: Tx, kode: string, tahun: number) {
-  const res = await tx.execute(sql`
-    insert into nomor_induk_counter (kode, tahun, last) values (${kode}, ${tahun}, 1)
-    on conflict (kode, tahun) do update set last = nomor_induk_counter.last + 1
-    returning last
-  `);
-  const last = (res as unknown as { rows: { last: number }[] }).rows[0].last;
+  const [{ last }] = await tx
+    .insert(nomorIndukCounter)
+    .values({ kode, tahun, last: 1 })
+    .onConflictDoUpdate({
+      target: [nomorIndukCounter.kode, nomorIndukCounter.tahun],
+      set: { last: sql`${nomorIndukCounter.last} + 1` },
+    })
+    .returning({ last: nomorIndukCounter.last });
   return formatNomorInduk(kode, last, tahun);
 }

@@ -63,6 +63,18 @@ export async function cariOpenLibrary(panggil: Panggil, isbn13: string): Promise
   hasil.penerbit = teksArray(ed?.publishers)[0];
   hasil.kota = teksArray(ed?.publish_places)[0];
   hasil.tahun = ambilTahun(teks(ed?.publish_date));
+  hasil.edisi = rapikan(teks(ed?.edition_name));
+  hasil.seri = rapikan(teksArray(ed?.series)[0]);
+  // Kontributor edisi berbentuk "Nama (Translator)"; hanya peran yang dikenal yang dipakai.
+  const peranKontribusi = (kata: RegExp) =>
+    teksArray(ed?.contributions)
+      .filter((c) => kata.test(c.match(/\(([^)]*)\)\s*$/)?.[1] ?? ""))
+      .map((c) => rapikan(c.replace(/\s*\([^)]*\)\s*$/, "")))
+      .filter((n): n is string => !!n);
+  const penerjemah = peranKontribusi(/translator|penerjemah/i);
+  const editor = peranKontribusi(/editor/i);
+  if (penerjemah.length) hasil.penerjemah = penerjemah;
+  if (editor.length) hasil.editor = editor;
   hasil.halaman = angka(ed?.number_of_pages);
   const desk = ed?.description;
   hasil.sinopsis = teks(typeof desk === "string" ? desk : rekam(desk)?.value);

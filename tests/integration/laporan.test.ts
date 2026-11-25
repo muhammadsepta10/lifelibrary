@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
 import { createLocalLibrary } from "@/lib/local-library";
 import type { SyncTransport } from "@/lib/sync-protocol";
@@ -23,6 +23,7 @@ beforeEach(async () => {
   lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}`, now: () => clock });
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await ctx.close();
 });
 
@@ -68,6 +69,9 @@ describe("Perpustakaan Lokal: Buku Induk", () => {
     const c = await catat("C", FIK.id, { tanggalMasuk: "2026-02-20", asal: "beli", harga: 60000 });
     await lib.sinkronkan(transport);
     clock = new Date("2027-01-05T03:00:00Z");
+    // Jam server ikut pindah ke 2027: server menolak pencatatan yang jauh di depan jam server.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(clock);
     const d = await catat("D", FIK.id, { asal: "lainnya" });
     await lib.sinkronkan(transport);
     return { a, b, c, d };

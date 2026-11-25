@@ -158,6 +158,37 @@ describe("Penjadwal Sinkronisasi", () => {
     penjadwal.berhenti();
   });
 
+  it("memberi tahu jumlah perubahan yang terkirim hanya bila ada yang terkirim", async () => {
+    const lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}` });
+    const transport: SyncTransport = {
+      push: async (req) => ({ hasil: req.mutasi.map((m) => ({ id: m.id, status: "diterima" as const })) }),
+      pull: async () => KOSONG,
+    };
+    const dikirim = vi.fn();
+    const { jam } = jamBuatan();
+    const penjadwal = buatPenjadwal({
+      library: lib,
+      transport,
+      onKeadaan: () => {},
+      onDikirim: dikirim,
+      jam,
+      target: new EventTarget(),
+    });
+
+    await penjadwal.mulai();
+    expect(dikirim).not.toHaveBeenCalled(); // tidak ada yang dikirim: tidak ada toast
+
+    await lib.tambahBuku({
+      judul: "Laut Bercerita",
+      kontributor: [{ nama: "Leila S. Chudori", utama: true }],
+      eksemplar: { kategoriId: FIK.id },
+    });
+    await penjadwal.picu();
+
+    expect(dikirim).toHaveBeenCalledExactlyOnceWith(2); // Buku + Eksemplar
+    penjadwal.berhenti();
+  });
+
   it("memberi tahu pemberitahuan field yang ditimpa dari hasil Sinkronisasi", async () => {
     const lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}` });
     const { bukuId } = await lib.tambahBuku({
@@ -225,7 +256,7 @@ describe("Penjadwal Sinkronisasi", () => {
       return { lib, penjadwal, push, pull, kondisi, keadaan, maju };
     }
 
-    it("data lokal tetap bisa dibuka dan diedit, perubahan menunggu di outbox", async () => {
+    it("data lokal tetap bisa dibuka dan diedit, perubahan menunggu dikirim", async () => {
       const { lib, penjadwal, keadaan } = siapkanLogin();
       await penjadwal.mulai();
       expect(keadaan.at(-1)).toEqual({ jenis: "perlu-login" });
@@ -249,8 +280,8 @@ describe("Penjadwal Sinkronisasi", () => {
       expect(push.mock.calls.length + pull.mock.calls.length).toBe(panggilanAwal);
     });
 
-    it("setelah login ulang (aplikasi dibuka lagi), outbox terkirim dan keadaan perlu-login hilang", async () => {
-      const { lib, penjadwal, kondisi, keadaan } = siapkanLogin();
+    it("setelah login ulang (aplikasi dibuka lagi), perubahan yang menunggu terkirim dan keadaan perlu-login hilang", async () => {
+      const { lib, penjadwal, kondisi, keadaan, push } = siapkanLogin();
       await penjadwal.mulai();
       await lib.tambahBukuManual({ judul: "Buku", pengarang: "Penulis", kategoriId: FIK.id });
       penjadwal.berhenti();
@@ -260,6 +291,8 @@ describe("Penjadwal Sinkronisasi", () => {
 
       expect(keadaan.at(-1)).toMatchObject({ jenis: "selesai" });
       expect((await lib.statusSinkronisasi()).menunggu).toBe(0);
+      const diterima = push.mock.results.flatMap((r) => (r.type === "return" ? [r.value] : []));
+      expect((await Promise.all(diterima)).flatMap((r) => r.hasil)).toHaveLength(2); // Buku + Eksemplar
       penjadwal.berhenti();
     });
 

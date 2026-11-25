@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { CircleAlert, ClockArrowUp, GitMerge } from "lucide-react";
 import { useLibrary } from "@/components/app/library-provider";
 import { PageHeader } from "@/components/app/page-header";
@@ -12,7 +13,32 @@ const waktuLog = (pada: number) =>
   new Date(pada).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default function SinkronPage() {
-  const { status, keadaan, sinkronkan, cobaLagi, antrean, log, online } = useLibrary();
+  const { library, status, keadaan, sinkronkan, cobaLagi, antrean, log, online } = useLibrary();
+  /** Perubahan yang sedang dikonfirmasi untuk dibuang, beserta yang ikut hilang. */
+  const [konfirmasi, setKonfirmasi] = useState<{ id: string; hilang: string[] } | null>(null);
+  const [galatBuang, setGalatBuang] = useState<string | null>(null);
+
+  async function mintaBuang(id: string) {
+    if (!library) return;
+    setGalatBuang(null);
+    try {
+      setKonfirmasi({ id, hilang: await library.pratinjauBuang(id) });
+    } catch (e) {
+      setGalatBuang(e instanceof Error ? e.message : "Tidak bisa membuang perubahan ini");
+    }
+  }
+
+  async function buang(id: string) {
+    if (!library) return;
+    try {
+      await library.buang(id);
+      setKonfirmasi(null);
+      // Ambil ulang data server supaya salinan di perangkat kembali sama dengan server.
+      sinkronkan();
+    } catch (e) {
+      setGalatBuang(e instanceof Error ? e.message : "Tidak bisa membuang perubahan ini");
+    }
+  }
 
   const pesan = (() => {
     switch (keadaan.jenis) {
@@ -77,17 +103,64 @@ export default function SinkronPage() {
                   <p className="text-sm font-medium">{item.ringkasan}</p>
                   <p className="mt-0.5 text-sm text-bahaya">{item.alasan}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => cobaLagi(item.id)}
-                  aria-label={`Coba lagi: ${item.ringkasan}`}
-                  className="h-10 shrink-0 rounded-xl border border-forest px-3 text-sm font-semibold text-forest-link"
-                >
-                  Coba lagi
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cobaLagi(item.id)}
+                    aria-label={`Coba lagi: ${item.ringkasan}`}
+                    className="h-10 rounded-xl border border-forest px-3 text-sm font-semibold text-forest-link"
+                  >
+                    Coba lagi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void mintaBuang(item.id)}
+                    aria-label={`Buang: ${item.ringkasan}`}
+                    className="h-10 rounded-xl border border-bahaya px-3 text-sm font-semibold text-bahaya"
+                  >
+                    Buang
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
+          {galatBuang && (
+            <p role="alert" className="mt-3 text-sm text-bahaya">
+              {galatBuang}
+            </p>
+          )}
+          {konfirmasi && (
+            <div role="alertdialog" aria-labelledby="judul-buang" className="mt-4 rounded-2xl border border-bahaya p-4" data-testid="konfirmasi-buang">
+              <h3 id="judul-buang" className="text-sm font-semibold text-bahaya">
+                Buang perubahan ini?
+              </h3>
+              <p className="mt-1 text-sm">
+                Perubahan di bawah ini dibuang dari perangkat dan tidak akan dikirim ke server. Data di perangkat dikembalikan
+                sama dengan server. Tindakan ini tidak bisa dibatalkan.
+              </p>
+              <ul className="mt-2 list-disc pl-5 text-sm" data-testid="daftar-hilang">
+                {konfirmasi.hilang.map((teks, i) => (
+                  <li key={i}>{teks}</li>
+                ))}
+              </ul>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void buang(konfirmasi.id)}
+                  className="h-10 rounded-xl bg-bahaya px-4 text-sm font-semibold text-paper"
+                >
+                  Ya, buang
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKonfirmasi(null)}
+                  className="h-10 rounded-xl border border-input px-4 text-sm font-semibold"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

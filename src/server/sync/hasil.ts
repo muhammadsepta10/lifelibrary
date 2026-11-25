@@ -5,7 +5,7 @@ export type HasilTanpaId =
   | Omit<Extract<HasilMutasi, { status: "ditolak" }>, "id">;
 
 export const diterima = (
-  extra: { nomorInduk?: string; eksemplarId?: string; ditimpa?: FieldDitimpa[] } = {},
+  extra: { nomorInduk?: string; eksemplarId?: string; bukuId?: string; ditimpa?: FieldDitimpa[] } = {},
 ): HasilTanpaId => {
   const { ditimpa, ...sisa } = extra;
   return { status: "diterima", ...sisa, ...(ditimpa?.length ? { ditimpa } : {}) };

@@ -67,7 +67,7 @@ describe("pesan konfirmasi", () => {
 });
 
 describe("Keluar & hapus data di perangkat ini", () => {
-  it("menghapus IndexedDB (koleksi, outbox, draf), seluruh cache, lalu keluar", async () => {
+  it("menghapus IndexedDB (koleksi, perubahan menunggu, draf), seluruh cache, lalu keluar", async () => {
     await lib.tambahBukuManual({ judul: "A", pengarang: "P", kategoriId: FIK.id });
     const urutan: string[] = [];
     const { storage, ada } = cachePalsu(["covers", "app-pages", "serwist-precache-v2"]);

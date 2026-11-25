@@ -22,6 +22,11 @@ export type FieldDraf =
   | "penerbit"
   | "kota"
   | "tahun"
+  | "edisi"
+  | "seri"
+  | "jilid"
+  | "penerjemah"
+  | "editor"
   | "halaman"
   | "bahasa"
   | "sinopsis"
@@ -37,6 +42,14 @@ export type DrafBuku = {
   penerbit: string | null;
   kota: string | null;
   tahun: number | null;
+  /** Keterangan edisi/cetakan, mis. "Cetakan pertama". */
+  edisi: string | null;
+  seri: string | null;
+  /** Nomor jilid/volume dalam seri (teks bebas, mis. "2"). */
+  jilid: string | null;
+  /** Kontributor berperan penerjemah/editor bila sumber memuatnya. */
+  penerjemah: string[];
+  editor: string[];
   halaman: number | null;
   bahasa: string | null;
   sinopsis: string | null;
@@ -74,6 +87,11 @@ export function drafKosong(isbn13: string): DrafBuku {
     penerbit: null,
     kota: null,
     tahun: null,
+    edisi: null,
+    seri: null,
+    jilid: null,
+    penerjemah: [],
+    editor: [],
     halaman: null,
     bahasa: null,
     sinopsis: null,

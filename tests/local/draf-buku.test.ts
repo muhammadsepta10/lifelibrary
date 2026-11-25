@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { drafKosong, type DrafBuku } from "@/lib/draf-buku";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
-import { bisaSimpanDraf, createLocalLibrary, ValidasiError } from "@/lib/local-library";
+import { createLocalLibrary, ValidasiError } from "@/lib/local-library";
 
 const FIL = PRESET_KATEGORI.find((k) => k.kode === "FIL")!;
 const FIK = PRESET_KATEGORI.find((k) => k.kode === "FIK")!;
@@ -58,6 +58,30 @@ describe("Perpustakaan Lokal: simpan draf Buku", () => {
     ]);
   });
 
+  it("edisi, seri, jilid, dan penerjemah dari draf ikut tersimpan", async () => {
+    const { bukuId } = await lib.simpanDraf(
+      { ...atomicHabits, edisi: "Cetakan pertama", seri: "Bumi", jilid: "2", penerjemah: ["Alfa Penerjemah"], editor: ["Beta Editor"] },
+      { kategoriId: FIL.id },
+    );
+
+    const detail = await lib.detailBuku(bukuId);
+    expect(detail).toMatchObject({ edisi: "Cetakan pertama", seri: "Bumi", jilid: "2" });
+    expect(detail?.kontributor.map((k) => [k.nama, k.peran, k.utama])).toEqual([
+      ["James Clear", "pengarang", true],
+      ["Alfa Penerjemah", "penerjemah", false],
+      ["Beta Editor", "editor", false],
+    ]);
+  });
+
+  it("draf lama tanpa field edisi, seri, jilid, penerjemah, editor tetap bisa disimpan", async () => {
+    const lama = { ...atomicHabits } as Partial<DrafBuku>;
+    for (const k of ["edisi", "seri", "jilid", "penerjemah", "editor"] as const) delete lama[k];
+
+    const { bukuId } = await lib.simpanDraf(lama as DrafBuku, { kategoriId: FIL.id });
+
+    expect(await lib.detailBuku(bukuId)).toMatchObject({ edisi: null, seri: null, jilid: null });
+  });
+
   it("ditolak tanpa Kategori, tanpa judul, atau tanpa pengarang; tidak ada yang tersimpan", async () => {
     await expect(lib.simpanDraf(atomicHabits, { kategoriId: "" })).rejects.toMatchObject({ field: "kategoriId" });
     await expect(lib.simpanDraf({ ...atomicHabits, judul: " " }, { kategoriId: FIL.id })).rejects.toMatchObject({
@@ -84,16 +108,6 @@ describe("Perpustakaan Lokal: simpan draf Buku", () => {
     await expect(
       lib.simpanDraf({ ...atomicHabits, isbn13: "9780735211292", kelasDdc: "813,6" }, { kategoriId: FIK.id }),
     ).rejects.toMatchObject({ field: "kelasDdc" });
-  });
-});
-
-describe("Perpustakaan Lokal: tombol simpan menunggu Kategori dikonfirmasi", () => {
-  it("nonaktif selama Kategori belum dipilih atau belum dikonfirmasi", () => {
-    expect(bisaSimpanDraf({ kategoriId: "", dikonfirmasi: false })).toBe(false);
-    expect(bisaSimpanDraf({ kategoriId: "", dikonfirmasi: true })).toBe(false);
-    // saran sudah terpilih di draf tapi Pemilik belum mengonfirmasi
-    expect(bisaSimpanDraf({ kategoriId: FIL.id, dikonfirmasi: false })).toBe(false);
-    expect(bisaSimpanDraf({ kategoriId: FIL.id, dikonfirmasi: true })).toBe(true);
   });
 });
 

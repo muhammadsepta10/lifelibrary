@@ -371,7 +371,7 @@ describe("Koreksi Kategori", () => {
   });
 });
 
-describe("Edit saat offline masuk outbox lalu terkirim saat online", () => {
+describe("Edit saat offline tersimpan lokal lalu terkirim saat online", () => {
   it("setiap edit tersimpan lokal dan menunggu dikirim; hanya field yang berubah dikirim", async () => {
     const { bukuId, eksemplarId } = await lib.tambahBukuManual({ judul: "A", pengarang: "B C", kategoriId: FIK.id });
     const { transport, terkirim } = perekam();
@@ -400,14 +400,16 @@ describe("Edit saat offline masuk outbox lalu terkirim saat online", () => {
     }
   });
 
-  it("edit yang tidak mengubah apa pun tidak masuk outbox", async () => {
+  it("edit yang tidak mengubah apa pun tidak dikirim", async () => {
     const { bukuId } = await lib.tambahBukuManual({ judul: "A", pengarang: "B", kategoriId: FIK.id });
-    const { transport } = perekam();
+    const { transport, terkirim } = perekam();
     await lib.sinkronkan(transport);
+    terkirim.length = 0;
 
     await lib.ubahBuku(bukuId, { judul: "A", penerbit: "" });
+    await lib.sinkronkan(transport);
 
-    expect((await lib.statusSinkronisasi()).menunggu).toBe(0);
+    expect(terkirim).toEqual([]);
   });
 
   it("edit atas Buku yang belum pernah terkirim dikirim setelah pembuatannya, berurutan", async () => {

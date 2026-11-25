@@ -11,11 +11,11 @@ export type CoverStore = {
   get(kunci: string): Promise<SampulTersimpan | null>;
 };
 
-/** Kunci sampul: nama berkas polos, tanpa folder, supaya aman dari path traversal. */
-export const KUNCI_SAMPUL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+/** Kunci sampul: nama berkas polos, tanpa folder dan tanpa "..", supaya aman dari path traversal. */
+export const KUNCI_SAMPUL = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
 export function periksaKunci(kunci: string): string {
-  if (!KUNCI_SAMPUL.test(kunci) || kunci.includes("..")) throw new Error("Kunci sampul tidak sah");
+  if (!KUNCI_SAMPUL.test(kunci)) throw new Error("Kunci sampul tidak sah");
   return kunci;
 }
 

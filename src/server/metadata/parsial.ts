@@ -7,6 +7,11 @@ export type Parsial = {
   penerbit?: string;
   kota?: string;
   tahun?: number;
+  edisi?: string;
+  seri?: string;
+  jilid?: string;
+  penerjemah?: string[];
+  editor?: string[];
   halaman?: number;
   bahasa?: string;
   sinopsis?: string;

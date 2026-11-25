@@ -94,7 +94,7 @@ describe("Antrean Cetak", () => {
     expect(await lib.jumlahAntreanCetak()).toEqual({ total: 2, siapDicetak: 2, menungguNomorInduk: 0 });
   });
 
-  it("menandai tercetak mengeluarkan Eksemplar dari antrean dan mengirimkannya lewat outbox", async () => {
+  it("menandai tercetak mengeluarkan Eksemplar dari antrean dan mengirimkannya saat Sinkronisasi", async () => {
     const a = await eksemplarSiap("Laut Bercerita", "Leila S. Chudori");
     const b = await eksemplarSiap("Bumi Manusia", "Pramoedya Ananta Toer");
     const { transport, terkirim } = server();
@@ -143,6 +143,47 @@ describe("Antrean Cetak", () => {
     await tandai();
     await lib.ubahBuku(a.bukuId, { kontributor: [{ nama: "Pramoedya Ananta Toer", utama: true }] });
     expect(await antrean()).toEqual([a.eksemplarId]);
+  });
+});
+
+describe("Antrean Cetak: kode Kategori berganti", () => {
+  const ubahKode = (kode: string) =>
+    ({
+      kategori: {
+        ubah: async (id: string, p: { kode?: string }) => ({
+          id,
+          kode: p.kode ?? kode,
+          nama: "Fiksi",
+          warna: FIK.warna,
+          diarsipkan: false,
+          dihapus: false,
+        }),
+      },
+    }) as unknown as KelolaTransport;
+
+  it("semua Eksemplar aktif Kategori itu masuk antrean lagi, Eksemplar Kategori lain tidak", async () => {
+    const a = await eksemplarSiap("Laut Bercerita", "Leila S. Chudori");
+    const b = await eksemplarSiap("Bumi Manusia", "Pramoedya Ananta Toer");
+    const lain = await eksemplarSiap("Sirah Nabawiyah", "Safiyyurrahman Mubarakfuri", AGM.id);
+    await lib.sinkronkan(server().transport);
+    await lib.tandaiTercetak([a.eksemplarId, b.eksemplarId, lain.eksemplarId]);
+    expect(await antrean()).toEqual([]);
+
+    await lib.kelola(ubahKode("NVL")).kategori.ubah(FIK.id, { kode: "NVL" });
+
+    expect((await antrean()).sort()).toEqual([a.eksemplarId, b.eksemplarId].sort());
+    const [item] = (await lib.antreanCetak()).filter((i) => i.eksemplarId === a.eksemplarId);
+    expect(item).toMatchObject({ nomorPanggil: { teks: "NVL / CHU / l" }, nomorInduk: "FIK-001/2026" });
+  });
+
+  it("mengganti nama atau warna saja tidak mengubah antrean", async () => {
+    const a = await eksemplarSiap("Laut Bercerita", "Leila S. Chudori");
+    await lib.sinkronkan(server().transport);
+    await lib.tandaiTercetak([a.eksemplarId]);
+
+    await lib.kelola(ubahKode(FIK.kode)).kategori.ubah(FIK.id, { nama: "Fiksi umum" });
+
+    expect(await antrean()).toEqual([]);
   });
 });
 
