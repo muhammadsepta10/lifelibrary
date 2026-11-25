@@ -32,7 +32,7 @@ beforeEach(() => {
 const mulai = (opsi: Partial<Parameters<LocalLibrary["mulaiSesiPenerimaan"]>[0]> = {}) =>
   lib.mulaiSesiPenerimaan({ cariMetadata, ...opsi });
 
-const kosong: PullResponse = { kursor: null, kategori: [], lokasi: [], aturanKategori: [], buku: [], eksemplar: [] };
+const kosong: PullResponse = { kursor: null, kategori: [], lokasi: [], aturanKategori: [], buku: [], eksemplar: [], templateLabel: null };
 
 /** Lokasi hanya datang dari server (dikelola online); tes menyalinnya lewat pull. */
 async function salinLokasi(nama: string) {
