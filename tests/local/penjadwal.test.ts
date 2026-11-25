@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createLocalLibrary } from "@/lib/local-library";
 import { PRESET_KATEGORI } from "@/lib/kategori-preset";
 import type { PullResponse, SyncTransport } from "@/lib/sync-protocol";
+import { LoginDiperlukanError } from "@/lib/sync/fetch-transport";
 import { buatPenjadwal, type Jam, type KeadaanSinkron } from "@/lib/sync/penjadwal";
 
 const FIK = PRESET_KATEGORI.find((k) => k.kode === "FIK")!;
@@ -196,5 +197,81 @@ describe("Penjadwal Sinkronisasi", () => {
       { pesan: "Penerbit di Laut Bercerita diperbarui dari perangkat lain" },
     ]);
     penjadwal.berhenti();
+  });
+
+  describe("sesi login kedaluwarsa", () => {
+    function siapkanLogin() {
+      const lib = createLocalLibrary({ dbName: `lifelibrary-test-${crypto.randomUUID()}` });
+      const keadaan: KeadaanSinkron[] = [];
+      const kondisi = { sesiHabis: true };
+      const push = vi.fn(async (req: { mutasi: { id: string }[] }) => {
+        if (kondisi.sesiHabis) throw new LoginDiperlukanError();
+        return { hasil: req.mutasi.map((m) => ({ id: m.id, status: "diterima" as const })) };
+      });
+      const pull = vi.fn(async () => {
+        if (kondisi.sesiHabis) throw new LoginDiperlukanError();
+        return KOSONG;
+      });
+      const target = new EventTarget();
+      const { jam, maju } = jamBuatan();
+      const penjadwal = buatPenjadwal({
+        library: lib,
+        transport: { push, pull } as SyncTransport,
+        onKeadaan: (k) => keadaan.push(k),
+        jam,
+        target,
+        periodeMs: 60_000,
+      });
+      return { lib, penjadwal, push, pull, kondisi, keadaan, maju };
+    }
+
+    it("data lokal tetap bisa dibuka dan diedit, perubahan menunggu di outbox", async () => {
+      const { lib, penjadwal, keadaan } = siapkanLogin();
+      await penjadwal.mulai();
+      expect(keadaan.at(-1)).toEqual({ jenis: "perlu-login" });
+
+      await lib.tambahBukuManual({ judul: "Ditulis Saat Login Habis", pengarang: "Penulis", kategoriId: FIK.id });
+
+      expect((await lib.daftarKoleksi()).map((k) => k.judul)).toEqual(["Ditulis Saat Login Habis"]);
+      expect((await lib.statusSinkronisasi()).menunggu).toBeGreaterThan(0);
+      penjadwal.berhenti();
+    });
+
+    it("Sinkronisasi menunggu sampai login ulang: pemicu otomatis tidak lagi memanggil server", async () => {
+      const { lib, penjadwal, push, pull, maju } = siapkanLogin();
+      await penjadwal.mulai();
+      await lib.tambahBukuManual({ judul: "Buku", pengarang: "Penulis", kategoriId: FIK.id });
+      const panggilanAwal = push.mock.calls.length + pull.mock.calls.length;
+
+      await penjadwal.picu(); // perubahan lokal baru
+      await maju(5 * 60_000); // pemicu berkala berkali-kali
+
+      expect(push.mock.calls.length + pull.mock.calls.length).toBe(panggilanAwal);
+    });
+
+    it("setelah login ulang (aplikasi dibuka lagi), outbox terkirim dan keadaan perlu-login hilang", async () => {
+      const { lib, penjadwal, kondisi, keadaan } = siapkanLogin();
+      await penjadwal.mulai();
+      await lib.tambahBukuManual({ judul: "Buku", pengarang: "Penulis", kategoriId: FIK.id });
+      penjadwal.berhenti();
+
+      kondisi.sesiHabis = false;
+      await penjadwal.mulai();
+
+      expect(keadaan.at(-1)).toMatchObject({ jenis: "selesai" });
+      expect((await lib.statusSinkronisasi()).menunggu).toBe(0);
+      penjadwal.berhenti();
+    });
+
+    it("'Sinkronkan sekarang' mencoba lagi walau sedang menunggu login", async () => {
+      const { penjadwal, kondisi, keadaan } = siapkanLogin();
+      await penjadwal.mulai();
+
+      kondisi.sesiHabis = false;
+      await penjadwal.picu({ paksa: true });
+
+      expect(keadaan.at(-1)).toMatchObject({ jenis: "selesai" });
+      penjadwal.berhenti();
+    });
   });
 });

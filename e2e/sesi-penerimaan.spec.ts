@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { envE2E } from "./env";
+import { expect, test } from "@playwright/test";
+import { masuk } from "./bantu";
 
 const ISBN = "9786024246945";
 const JUDUL = "Buku Uji Sesi";
@@ -24,15 +24,6 @@ const HASIL_METADATA = {
   },
   sumber: [{ sumber: "openlibrary", status: "ok" }],
 };
-
-async function masuk(page: Page) {
-  const { ownerEmail, ownerPassword } = envE2E();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Kata sandi").fill(ownerPassword);
-  await page.getByRole("button", { name: "Masuk" }).click();
-  await expect(page).toHaveURL("/");
-}
 
 test("login, Sesi Penerimaan: ketik ISBN, tinjau draf, konfirmasi Kategori, simpan, Eksemplar muncul di Koleksi", async ({ page }) => {
   let metadataDipanggil = 0;

@@ -22,6 +22,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Biarkan lewat: halaman login, API auth, aset SW/manifest/ikon, dan berkas statis.
   matcher: [
-    "/((?!login|api/auth|serwist|sw\\.js|manifest\\.webmanifest|~offline|icons|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|woff2?)$).*)",
+    "/((?!login|api/auth|serwist|sw\\.js|manifest\\.webmanifest|~offline|icons|zxing|_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico|woff2?)$).*)",
   ],
 };

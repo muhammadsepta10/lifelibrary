@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { DrafBukuForm } from "@/components/app/draf-buku-form";
+import { ButuhKoneksi } from "@/components/app/kelola";
 import { Field, inputCls, tombolSekunderCls, tombolUtamaCls } from "@/components/app/form";
 import { useLibrary } from "@/components/app/library-provider";
 import { PageHeader } from "@/components/app/page-header";
@@ -27,7 +28,7 @@ type Tahap =
     };
 
 export default function TambahIsbnPage() {
-  const { library, kategori } = useLibrary();
+  const { library, kategori, online } = useLibrary();
   const router = useRouter();
   const [tahap, setTahap] = useState<Tahap>({ jenis: "cari" });
   const [isbn, setIsbn] = useState("");
@@ -153,6 +154,11 @@ export default function TambahIsbnPage() {
           <button type="submit" disabled={!library || tahap.jenis === "mencari"} className={tombolUtamaCls}>
             {tahap.jenis === "mencari" ? "Mencari metadata…" : "Cari"}
           </button>
+          {!online && (
+            <p className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+              <ButuhKoneksi /> untuk mencari metadata. Cek duplikat tetap jalan, dan datanya bisa diisi manual.
+            </p>
+          )}
           <Link href="/tambah" className="text-center text-sm font-medium text-forest-link underline">
             Isi manual tanpa ISBN
           </Link>

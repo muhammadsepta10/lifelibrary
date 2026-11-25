@@ -271,7 +271,7 @@ describe("Sesi Penerimaan: kartu hasil scan dan statusnya", () => {
     expect(kartu.catatan).toContain("Isi datanya manual");
   });
 
-  it("pencarian gagal (offline): kartu tetap bisa ditinjau dan diisi manual, dan bisa dicoba lagi", async () => {
+  it("pencarian gagal (offline): kartu Menunggu data, bisa dicoba lagi manual dan lengkap setelah online", async () => {
     let panggilan = 0;
     const sesi = await mulai({
       cariMetadata: async (isbn13) => {
@@ -283,12 +283,13 @@ describe("Sesi Penerimaan: kartu hasil scan dan statusnya", () => {
     const kartuId = await pindaiSelesai(sesi, ISBN_A);
 
     const [gagal] = await sesi.kartu();
-    expect(gagal).toMatchObject({ status: "siap", bisaCobaLagi: true, draf: { isbn13: ISBN_A } });
+    expect(gagal).toMatchObject({ status: "menunggu-data", bisaCobaLagi: true, draf: { isbn13: ISBN_A } });
     expect(gagal.catatan).toContain("Tidak ada koneksi");
 
     await sesi.cobaLagi(kartuId);
 
     expect(await sesi.kartu()).toMatchObject([{ status: "siap", judul: "Akhirnya Ketemu", catatan: null, bisaCobaLagi: false }]);
+    expect(await lib.jumlahDrafMenunggu()).toBe(0);
   });
 
   it("sumber metadata tak terjangkau semua: pesan berbeda dari 'tidak ditemukan', boleh coba lagi", async () => {
