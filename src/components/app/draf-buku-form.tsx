@@ -213,7 +213,15 @@ export function DrafBukuForm({
 
       {teks("judul", "Judul", { field: "judul" })}
 
-      {cadanganJudul && <DaftarKandidat keadaan={kandidat.keadaan} onPilih={pilihKandidat} />}
+      {cadanganJudul && <DaftarKandidat
+          keadaan={kandidat.keadaan}
+          onPilih={pilihKandidat}
+          onTutup={() => {
+            kandidat.tutup();
+            // Daftar hilang bersama tombolnya: fokus kembali ke judul supaya keyboard tidak tersesat.
+            document.getElementById("judul")?.focus();
+          }}
+        />}
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-medium">

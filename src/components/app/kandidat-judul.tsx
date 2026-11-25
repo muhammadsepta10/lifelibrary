@@ -30,6 +30,8 @@ export function useKandidat({ aktif, judul, pengarang }: { aktif: boolean; judul
   const kunci = kunciKandidat(masukan);
   const [hasil, setHasil] = useState<{ kunci: string; keadaan: Keadaan | null } | null>(null);
   const [ditutup, setDitutup] = useState<string | null>(null);
+  // Daftar yang ditutup muncul lagi hanya bila judul atau pengarang berubah; kembali ke pasangan lama pun dihitung berubah.
+  if (ditutup !== null && ditutup !== kunci) setDitutup(null);
   const [segeraUntuk, setSegeraUntuk] = useState<string | null>(null);
   const cache = useRef(new Map<string, HasilKandidat>());
 
@@ -42,14 +44,21 @@ export function useKandidat({ aktif, judul, pengarang }: { aktif: boolean; judul
       setHasil({ kunci, keadaan: keadaanDari(dicache) });
       return;
     }
+    // Offline: tidak ada permintaan dan tidak ada pesan; Pemilik mengisi manual.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setHasil({ kunci, keadaan: null });
+      return;
+    }
     const kendali = new AbortController();
     const jalan = async () => {
       setHasil({ kunci, keadaan: { status: "mencari" } });
       try {
         const h = await cariKandidat(cari, kendali.signal);
         if (kendali.signal.aborted) return;
-        cache.current.set(kunci, h);
-        setHasil({ kunci, keadaan: keadaanDari(h) });
+        const keadaan = keadaanDari(h);
+        // Sumber gagal tidak disimpan: mengetik ulang pasangan yang sama boleh mencoba lagi.
+        if (keadaan.status !== "galat") cache.current.set(kunci, h);
+        setHasil({ kunci, keadaan });
       } catch (e) {
         if (kendali.signal.aborted) return;
         // Offline atau login habis: diam saja, Pemilik mengisi manual.
@@ -68,24 +77,26 @@ export function useKandidat({ aktif, judul, pengarang }: { aktif: boolean; judul
     keadaan,
     /** Memicu pencarian tanpa menunggu jeda (Enter di field judul). */
     segera: () => setSegeraUntuk(kunci),
-    /** Menyembunyikan daftar sampai judul atau pengarang berubah. */
-    tutup: (judulBaru: string, pengarangBaru: string) => setDitutup(kunciKandidat(masukanKandidat(judulBaru, pengarangBaru))),
+    /** Menyembunyikan daftar sampai judul atau pengarang berubah (bawaan: masukan saat ini). */
+    tutup: (judulBaru = judul, pengarangBaru = pengarang) => setDitutup(kunciKandidat(aktif ? masukanKandidat(judulBaru, pengarangBaru) : null)),
   };
 }
 
 const keadaanDari = (h: HasilKandidat): Keadaan => {
   if (h.kandidat.length) return { status: "ada", kandidat: h.kandidat };
-  // Tidak ada Kandidat karena sumber gagal berbeda dari "tidak ada yang cocok".
-  return h.sumber.length > 0 && h.sumber.every((s) => s.status === "galat") ? { status: "galat" } : { status: "kosong" };
+  // Tidak ada Kandidat karena ada sumber yang gagal berbeda dari "tidak ada yang cocok": bukunya belum tentu tidak ada.
+  return h.sumber.some((s) => s.status === "galat") ? { status: "galat" } : { status: "kosong" };
 };
 
 /** Daftar Kandidat di bawah field judul. Status diumumkan lewat `aria-live`. */
 export function DaftarKandidat({
   keadaan,
   onPilih,
+  onTutup,
 }: {
   keadaan: Keadaan | null;
   onPilih: (kandidat: Kandidat) => void;
+  onTutup: () => void;
 }) {
   return (
     <section aria-labelledby="judul-kandidat" className="flex flex-col gap-2" data-testid="kandidat-judul">
@@ -117,6 +128,15 @@ export function DaftarKandidat({
             </li>
           ))}
         </ul>
+      )}
+      {keadaan?.status === "ada" && (
+        <button
+          type="button"
+          onClick={onTutup}
+          className="min-h-12 w-full rounded-2xl px-4 py-3 text-left text-sm font-medium text-ink-muted underline focus-visible:ring-2 focus-visible:ring-forest-link"
+        >
+          Bukan salah satunya
+        </button>
       )}
     </section>
   );
