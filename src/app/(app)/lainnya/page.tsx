@@ -43,6 +43,19 @@ export default function LainnyaPage() {
           </Link>
         ))}
       </section>
+      <section className="flex flex-col gap-3 p-5 pb-0">
+        <h2 className="font-heading text-xl font-semibold">Laporan</h2>
+        {[
+          { href: "/buku-induk", label: "Buku Induk", butuhKoneksi: true },
+          { href: "/statistik", label: "Statistik", butuhKoneksi: false },
+        ].map(({ href, label, butuhKoneksi }) => (
+          <Link key={href} href={href} className={`${kartuCls} flex h-14 items-center gap-3 px-4 text-sm font-semibold`}>
+            {label}
+            {butuhKoneksi && !online && <span className="ml-auto text-xs font-medium text-ink-muted">Ekspor butuh koneksi</span>}
+            <ChevronRight className={`size-5 text-ink-muted ${butuhKoneksi && !online ? "" : "ml-auto"}`} aria-hidden />
+          </Link>
+        ))}
+      </section>
       <section className="flex flex-col gap-3 p-5">
         <button
           type="button"

@@ -15,7 +15,12 @@ const NAV = [
 ] as const;
 
 function aktif(pathname: string, href: string) {
-  if (href === "/koleksi") return pathname.startsWith("/koleksi") || pathname.startsWith("/buku");
+  if (href === "/koleksi") {
+    return pathname.startsWith("/koleksi") || pathname === "/buku" || pathname.startsWith("/buku/");
+  }
+  if (href === "/lainnya") {
+    return pathname.startsWith("/lainnya") || pathname.startsWith("/buku-induk") || pathname.startsWith("/statistik");
+  }
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 

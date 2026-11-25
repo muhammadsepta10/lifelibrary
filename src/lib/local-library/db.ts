@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { JenisAturan } from "@/lib/kelola-protocol";
 import type { FieldBuku, FieldEksemplar, KontributorDto } from "@/lib/buku-fields";
+import type { PenyianganDto } from "@/lib/penyiangan-protocol";
 import type { Mutasi } from "@/lib/sync-protocol";
 
 export type KategoriRow = {
@@ -35,6 +36,8 @@ export type EksemplarRow = FieldEksemplar & {
   /** ISO 8601 dengan offset zona perangkat. */
   waktuDicatat: string;
   status: "aktif" | "keluar";
+  /** Catatan Penyiangan; kosong (atau tidak ada pada baris lama) selama aktif. */
+  penyiangan?: PenyianganDto | null;
   menungguSinkron: boolean;
   /** Label perlu dicetak (ulang); Antrean Cetak (tiket lain) membacanya. */
   perluCetak: boolean;

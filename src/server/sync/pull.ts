@@ -1,6 +1,7 @@
 import { asc, eq, gt, inArray } from "drizzle-orm";
 import { aturanKategori, buku, bukuKontributor, eksemplar, kategori, kontributor, lokasi } from "@/server/db/schema";
 import type { Db } from "@/server/db/types";
+import { eksemplarDto } from "./dto";
 import type { AturanKategoriDto, BukuDto, EksemplarDto, KategoriDto, LokasiDto, PullResponse } from "@/lib/sync-protocol";
 
 /** Perubahan sejak kursor (berdasarkan `updatedAt` server). Kursor null = semuanya. */
@@ -97,21 +98,7 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
         utama: k.utama,
       })),
   }));
-  const eksemplarDto: EksemplarDto[] = eksemplarRows.map((e) => ({
-    id: e.id,
-    bukuId: e.bukuId,
-    kategoriId: e.kategoriId,
-    nomorInduk: e.nomorInduk,
-    tahunPencatatan: e.tahunPencatatan,
-    waktuDicatat: e.waktuDicatatPerangkat.toISOString(),
-    status: e.status as EksemplarDto["status"],
-    lokasiId: e.lokasiId,
-    tanggalMasuk: e.tanggalMasuk,
-    asal: e.asal as EksemplarDto["asal"],
-    harga: e.harga,
-    kondisi: e.kondisi as EksemplarDto["kondisi"],
-    perluCetak: e.perluCetak,
-  }));
+  const eksemplarDtos: EksemplarDto[] = eksemplarRows.map(eksemplarDto);
 
   const terbaru = [...kategoriRows, ...lokasiRows, ...aturanRows, ...bukuRows, ...eksemplarRows]
     .map((r) => r.updatedAt.getTime())
@@ -123,6 +110,6 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     lokasi: lokasiDto,
     aturanKategori: aturanDto,
     buku: bukuDto,
-    eksemplar: eksemplarDto,
+    eksemplar: eksemplarDtos,
   };
 }

@@ -10,12 +10,17 @@ import {
   type StatusSinkronisasi,
 } from "@/lib/local-library";
 import { fetchKelolaTransport } from "@/lib/sync/fetch-kelola-transport";
+import { fetchPenyianganTransport } from "@/lib/sync/fetch-penyiangan-transport";
 import { fetchTransport } from "@/lib/sync/fetch-transport";
 import { buatPenjadwal, type KeadaanSinkron } from "@/lib/sync/penjadwal";
 
 type Ctx = {
   library: LocalLibrary | null;
   koleksi: ItemKoleksi[] | undefined;
+  /** Semua Eksemplar termasuk yang keluar; disaring layar Koleksi dengan `saringKoleksi`. */
+  koleksiSemua: ItemKoleksi[] | undefined;
+  /** Penyiangan; hanya berhasil saat online (ADR 0004). */
+  penyiangan: ReturnType<LocalLibrary["penyiangan"]> | null;
   status: StatusSinkronisasi | undefined;
   /** Pilihan Kategori (tanpa yang diarsipkan). */
   kategori: KategoriRow[] | undefined;
@@ -41,7 +46,7 @@ const noopSubscribe = () => () => {};
 
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const library = useSyncExternalStore(noopSubscribe, getLibrary, () => null);
-  const [koleksi, setKoleksi] = useState<ItemKoleksi[]>();
+  const [koleksiSemua, setKoleksiSemua] = useState<ItemKoleksi[]>();
   const [status, setStatus] = useState<StatusSinkronisasi>();
   const [daftar, setDaftar] = useState<DaftarLokal>();
   const [keadaan, setKeadaan] = useState<KeadaanSinkron>({ jenis: "diam" });
@@ -51,7 +56,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const lib = library;
     if (!lib) return;
-    const berhenti = [lib.pantauKoleksi(setKoleksi), lib.pantauStatus(setStatus), lib.pantauDaftar(setDaftar)];
+    const berhenti = [lib.pantauKoleksiSemua(setKoleksiSemua), lib.pantauStatus(setStatus), lib.pantauDaftar(setDaftar)];
     penjadwal.current = buatPenjadwal({ library: lib, transport: fetchTransport, onKeadaan: setKeadaan });
 
     const picu = () => void penjadwal.current?.picu();
@@ -81,11 +86,16 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const kategori = useMemo(() => daftar?.kategori.filter((k) => !k.diarsipkan), [daftar]);
   const kelola = useMemo(() => library?.kelola(fetchKelolaTransport) ?? null, [library]);
 
+  const penyiangan = useMemo(() => library?.penyiangan(fetchPenyianganTransport) ?? null, [library]);
+  const koleksi = useMemo(() => koleksiSemua?.filter((k) => k.status === "aktif"), [koleksiSemua]);
+
   const sinkronkan = useCallback(() => void penjadwal.current?.picu(), []);
 
   const value = useMemo(
-    () => ({ library, koleksi, status, kategori, daftar, kelola, keadaan, online, sinkronkan }),
-    [library, koleksi, status, kategori, daftar, kelola, keadaan, online, sinkronkan],
+    () => ({
+      library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, kelola, keadaan, online, sinkronkan,
+    }),
+    [library, koleksi, koleksiSemua, penyiangan, status, kategori, daftar, kelola, keadaan, online, sinkronkan],
   );
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }

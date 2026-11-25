@@ -151,6 +151,10 @@ export const eksemplar = pgTable(
     /** Rupiah utuh. */
     harga: integer("harga"),
     kondisi: text("kondisi"),
+    /** Penyiangan (hilang/rusak/dihibahkan/dijual); terisi bersama `status` = keluar. */
+    penyianganJenis: text("penyiangan_jenis"),
+    penyianganTanggal: date("penyiangan_tanggal", { mode: "string" }),
+    penyianganAlasan: text("penyiangan_alasan"),
     /** Label perlu dicetak (ulang), mis. setelah koreksi Kategori. Dibaca Antrean Cetak. */
     perluCetak: boolean("perlu_cetak").notNull().default(false),
     /** Lihat `buku.fieldWaktu`. */
