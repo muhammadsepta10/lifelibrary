@@ -19,14 +19,20 @@ import {
   type KategoriRow,
   type LokasiRow,
 } from "./db";
+import type { DrafBuku } from "@/lib/draf-buku";
+import { bisaSimpanDraf, type BukuDuplikat } from "./draf";
 import { ButuhKoneksiError, ValidasiError } from "./errors";
 import { periksaFieldBuku, periksaFieldEksemplar, samaNilai } from "./masukan";
 import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
+import { hitungSaranKategori, type MasukanSaran, type SaranKategori } from "./saran-kategori";
 import { isoLokal } from "./waktu";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LokasiRow } from "./db";
 export { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
+export { normalisasiIsbn, type HasilIsbn } from "@/lib/isbn";
+export type { MasukanSaran, SaranKategori } from "./saran-kategori";
+export { bisaSimpanDraf, type BukuDuplikat };
 
 export const NOMOR_INDUK_KOSONG = "——";
 const BATCH_PUSH = 50;
@@ -185,6 +191,61 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       judul: input.judul,
       kontributor: [{ nama: input.pengarang, peran: "pengarang", utama: true }],
       eksemplar: { kategoriId: input.kategoriId },
+    });
+  }
+
+  /** Saran Kategori dari data lokal (bekerja offline): Aturan Kategori, lalu Buku lain. */
+  async function sarankanKategori(masukan: MasukanSaran): Promise<SaranKategori | null> {
+    await siap;
+    const [kategori, aturan, buku, eksemplar] = await Promise.all([
+      db.kategori.toArray(),
+      db.aturanKategori.toArray(),
+      db.buku.toArray(),
+      db.eksemplar.toArray(),
+    ]);
+    return hitungSaranKategori(masukan, { kategori, aturan, buku, eksemplar });
+  }
+
+  /** Buku yang sudah tercatat dengan ISBN-13 ini, atau null. */
+  async function cariBukuByIsbn(isbn13: string): Promise<BukuDuplikat | null> {
+    await siap;
+    const buku = await db.buku.where("isbn13").equals(isbn13).first();
+    if (!buku) return null;
+    const eksemplar = (await db.eksemplar.where("bukuId").equals(buku.id).toArray()).sort((a, b) =>
+      a.waktuDicatat.localeCompare(b.waktuDicatat),
+    );
+    return {
+      bukuId: buku.id,
+      judul: buku.judul,
+      pengarang: pengarangUtama(buku)?.nama ?? "",
+      kategoriId: eksemplar.at(-1)?.kategoriId ?? null,
+      jumlahEksemplar: eksemplar.length,
+    };
+  }
+
+  /**
+   * Menyimpan draf Buku (hasil pencarian metadata yang sudah ditinjau, atau
+   * draf kosong yang dilengkapi manual) sebagai Buku baru + Eksemplar pertama.
+   * Pengarang pertama menjadi Pengarang Utama.
+   */
+  async function simpanDraf(draf: DrafBuku, eksemplar: { kategoriId: string } & InputFieldEksemplar) {
+    const nama = draf.pengarang.map((n) => n.trim()).filter(Boolean);
+    if (!draf.judul.trim()) throw new ValidasiError("judul", "Judul wajib diisi");
+    if (nama.length === 0) throw new ValidasiError("pengarang", "Pengarang wajib diisi");
+    return tambahBuku({
+      judul: draf.judul,
+      penerbit: draf.penerbit,
+      kota: draf.kota,
+      tahun: draf.tahun,
+      halaman: draf.halaman,
+      bahasa: draf.bahasa,
+      sinopsis: draf.sinopsis,
+      sampul: draf.sampul,
+      subjek: draf.subjek,
+      kelasDdc: draf.kelasDdc,
+      isbn13: draf.isbn13,
+      kontributor: nama.map((n, i) => ({ nama: n, peran: "pengarang" as const, utama: i === 0 })),
+      eksemplar,
     });
   }
 
@@ -647,6 +708,9 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     daftarLokasi,
     daftarAturanKategori,
     kelola,
+    sarankanKategori,
+    cariBukuByIsbn,
+    simpanDraf,
     tambahBukuManual,
     tambahBuku,
     catatEksemplar,
