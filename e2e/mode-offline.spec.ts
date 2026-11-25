@@ -22,7 +22,7 @@ const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64",
 );
-const ISBN_ADA = "9786024246945";
+const ISBN_ADA = "9780306406157"; // bukan ISBN spec lain: basis data E2E dipakai bersama
 const ISBN_BARU = "9786020633176";
 
 const { defaultBrowserType: _tidakDipakai, ...PONSEL } = devices["Pixel 7"];
@@ -290,5 +290,35 @@ test.describe("tanpa Service Worker: server dikendalikan tes", () => {
     expect(await page.evaluate(() => caches.keys())).toEqual([]);
     const basisData = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
     expect(basisData).not.toContain("lifelibrary");
+  });
+});
+
+test.describe("pasang di layar utama", () => {
+  test.use({ serviceWorkers: "block" });
+
+  test("manifest valid dengan ikon yang bisa diunduh", async ({ request }) => {
+    const res = await request.get("/manifest.webmanifest");
+    expect(res.ok()).toBe(true);
+    const manifest = (await res.json()) as { display: string; start_url: string; icons: { src: string; purpose?: string }[] };
+    expect(manifest.display).toBe("standalone");
+    expect(manifest.start_url).toBe("/");
+    expect(manifest.icons.map((i) => i.purpose ?? "any")).toContain("maskable");
+    for (const ikon of manifest.icons) expect((await request.get(ikon.src)).ok()).toBe(true);
+  });
+
+  test.describe("iPhone Safari", () => {
+    test.use({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    });
+
+    test("Lainnya menampilkan langkah Add to Home Screen", async ({ page, context }) => {
+      await masukLewatApi(context);
+      await page.goto("/lainnya");
+      const kartu = page.getByTestId("pasang-aplikasi");
+      await expect(kartu).toContainText("Bagikan");
+      await expect(kartu).toContainText("Tambah ke Layar Utama");
+      await expect(kartu).toContainText("Add to Home Screen");
+    });
   });
 });
