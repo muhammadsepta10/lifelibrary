@@ -1,6 +1,15 @@
 import { and, asc, eq, gt, notInArray, or, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { aturanKategori, buku, eksemplar, kategori, lokasi, templateLabel } from "@/server/db/schema";
+import {
+  aturanKategori,
+  buku,
+  eksemplar,
+  kategori,
+  lokasi,
+  peminjam,
+  peminjaman,
+  templateLabel,
+} from "@/server/db/schema";
 import { templateDariRow } from "@/server/kelola/template-label";
 import type { Db } from "@/server/db/types";
 import { eksemplarDto } from "./dto";
@@ -50,6 +59,13 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     .where(baru(eksemplar))
     .orderBy(asc(eksemplar.updatedAt));
 
+  const peminjamRows = await db.select().from(peminjam).where(baru(peminjam)).orderBy(asc(peminjam.updatedAt));
+  const peminjamanRows = await db
+    .select()
+    .from(peminjaman)
+    .where(baru(peminjaman))
+    .orderBy(asc(peminjaman.updatedAt));
+
   const kontribusi = await muatKontributor(
     db,
     bukuRows.map((b) => b.id),
@@ -92,7 +108,16 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
   }));
   const eksemplarDtos: EksemplarDto[] = eksemplarRows.map(eksemplarDto);
 
-  const semua = [...kategoriRows, ...lokasiRows, ...aturanRows, ...templateRows, ...bukuRows, ...eksemplarRows];
+  const semua = [
+    ...kategoriRows,
+    ...lokasiRows,
+    ...aturanRows,
+    ...templateRows,
+    ...bukuRows,
+    ...eksemplarRows,
+    ...peminjamRows,
+    ...peminjamanRows,
+  ];
   const terbaru = semua.reduce<number | null>((max, r) => {
     const t = r.updatedAt.getTime();
     return max === null || t > max ? t : max;
@@ -114,5 +139,14 @@ export async function pull(db: Db, kursor: string | null): Promise<PullResponse>
     templateLabel: templateRows[0] ? templateDariRow(templateRows[0]) : null,
     buku: bukuDto,
     eksemplar: eksemplarDtos,
+    peminjam: peminjamRows.map((p) => ({ id: p.id, nama: p.nama, kontak: p.kontak })),
+    peminjaman: peminjamanRows.map((p) => ({
+      id: p.id,
+      eksemplarId: p.eksemplarId,
+      peminjamId: p.peminjamId,
+      tanggalPinjam: p.tanggalPinjam,
+      jatuhTempo: p.jatuhTempo,
+      tanggalKembali: p.tanggalKembali,
+    })),
   };
 }

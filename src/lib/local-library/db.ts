@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import type { JenisAturan } from "@/lib/kelola-protocol";
 import type { FieldBuku, FieldEksemplar, KontributorDto } from "@/lib/buku-fields";
 import type { PenyianganDto } from "@/lib/penyiangan-protocol";
+import type { PeminjamanDto, PeminjamDto } from "@/lib/peminjaman-protocol";
 import type { Mutasi } from "@/lib/sync-protocol";
 import type { DrafBuku, StatusSumber } from "@/lib/draf-buku";
 
@@ -47,6 +48,9 @@ export type EksemplarRow = FieldEksemplar & {
    */
   perluCetak: boolean;
 };
+
+export type PeminjamRow = PeminjamDto;
+export type PeminjamanRow = PeminjamanDto;
 
 export type OutboxRow = {
   seq?: number;
@@ -127,6 +131,8 @@ export class LocalDb extends Dexie {
   meta!: EntityTable<MetaRow, "key">;
   log!: EntityTable<LogRow, "id">;
   drafMenunggu!: EntityTable<DrafMenungguRow, "id">;
+  peminjam!: EntityTable<PeminjamRow, "id">;
+  peminjaman!: EntityTable<PeminjamanRow, "id">;
 
   constructor(name: string) {
     super(name);
@@ -156,6 +162,11 @@ export class LocalDb extends Dexie {
           .modify((e) => Object.assign(e, eksemplarKosong(), { ...e }));
       });
     this.version(4).stores({ log: "id, pada" });
-    this.version(5).stores({ drafMenunggu: "id, isbn13, status, dicatat" });
+    // Peminjaman (tiket #10). `tanggalKembali` tidak diindeks (null tidak bisa jadi kunci IndexedDB).
+    this.version(5).stores({
+      peminjam: "id, nama",
+      peminjaman: "id, eksemplarId, peminjamId, jatuhTempo",
+    });
+    this.version(6).stores({ drafMenunggu: "id, isbn13, status, dicatat" });
   }
 }

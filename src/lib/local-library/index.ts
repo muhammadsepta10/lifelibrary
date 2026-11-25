@@ -32,6 +32,8 @@ import {
   type LogRow,
   type LokasiRow,
   type OutboxRow,
+  type PeminjamanRow,
+  type PeminjamRow,
 } from "./db";
 import {
   ALASAN_BELUM_PUNYA_NOMOR_INDUK,
@@ -51,6 +53,12 @@ import { hitungNomorPanggil, type NomorPanggil } from "./nomor-panggil";
 import { hitungSaranKategori, type MasukanSaran, type SaranKategori } from "./saran-kategori";
 import { buatSesiPenerimaan, type OpsiSesi } from "./sesi-penerimaan";
 import { isoLokal } from "./waktu";
+import {
+  buatPeminjaman,
+  type DaftarPeminjaman,
+  type ItemPeminjam,
+  type PinjamanAktif,
+} from "./peminjaman";
 
 export { ButuhKoneksiError, ValidasiError } from "./errors";
 export type { AturanKategoriRow, KategoriRow, LogRow, LokasiRow } from "./db";
@@ -69,6 +77,18 @@ export type {
 } from "./cetak";
 export { saringKoleksi, normalisasiTeks, type KriteriaKoleksi } from "./cari-koleksi";
 export { STATUS_KOLEKSI, LABEL_STATUS_KOLEKSI, type StatusKoleksi } from "./status-koleksi";
+export type {
+  DaftarPeminjaman,
+  HasilCariEksemplar,
+  HasilPindaiLabel,
+  InputPeminjam,
+  InputPinjamkan,
+  ItemPeminjam,
+  ItemPeminjaman,
+  PinjamanAktif,
+} from "./peminjaman";
+export { bacaNomorInduk, POLA_NOMOR_INDUK } from "@/lib/nomor-induk";
+export { tanggalLokal } from "./peminjaman";
 export type { Statistik } from "./statistik";
 export type { BarisBukuInduk } from "@/lib/buku-induk";
 export { normalisasiIsbn, type HasilIsbn } from "@/lib/isbn";
@@ -124,7 +144,7 @@ export type ItemKoleksi = {
   kontributor: string[];
   /** `keluar` setelah Penyiangan. `daftarKoleksi` hanya memuat yang aktif. */
   status: "aktif" | "keluar";
-  /** Sedang dipinjam; lihat `idEksemplarDipinjam` (titik sambung tiket Peminjaman). */
+  /** Sedang dipinjam: punya Peminjaman tanpa tanggal kembali (`idEksemplarDipinjam`). */
   dipinjam: boolean;
 };
 
@@ -160,6 +180,8 @@ export type EksemplarDetail = {
   kondisi: Kondisi | null;
   waktuDicatat: string;
   perluCetak: boolean;
+  /** Pinjaman yang sedang berjalan; null bila tersedia. */
+  dipinjam: PinjamanAktif | null;
 };
 
 export type DetailBuku = BukuRow & {
@@ -220,6 +242,10 @@ function medanEdit(m: Mutasi): { kunci: string; fields: string[] } | null {
       return { kunci: `eksemplar:${m.eksemplarId}`, fields: Object.keys(m.perubahan) };
     case "eksemplar.koreksiKategori":
       return { kunci: `eksemplar:${m.eksemplarId}`, fields: ["kategoriId", "perluCetak"] };
+    case "peminjaman.ubah":
+      return { kunci: `peminjaman:${m.peminjamanId}`, fields: Object.keys(m.perubahan) };
+    case "peminjam.ubah":
+      return { kunci: `peminjam:${m.peminjamId}`, fields: Object.keys(m.perubahan) };
     default:
       return null;
   }
@@ -245,6 +271,15 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
 
   /** Id outbox = id mutasi; server idempoten berdasarkan id ini. */
   const antre = (mutasi: Mutasi) => db.outbox.add({ id: mutasi.id, mutasi });
+
+  const peminjaman = buatPeminjaman({ db, now, uuid, antre });
+  /** Perintah dan pembaca Peminjaman baru jalan setelah database terbuka (preset Kategori tersalin). */
+  const sesudahSiap =
+    <A extends unknown[], R>(f: (...a: A) => Promise<R>) =>
+    async (...a: A) => {
+      await siap;
+      return f(...a);
+    };
 
   async function validasiKategori(kategoriId: string) {
     if (!kategoriId) throw new ValidasiError("kategoriId", "Pilih Kategori dulu sebelum menyimpan");
@@ -679,6 +714,9 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       db.kategori.toArray(),
       db.lokasi.toArray(),
     ]);
+    const pinjaman = new Map(
+      await Promise.all(eksemplar.map(async (e) => [e.id, await peminjaman.pinjamanAktif(e.id)] as const)),
+    );
     const katById = new Map(kategori.map((k) => [k.id, k]));
     const lokasiById = new Map(lokasi.map((l) => [l.id, l]));
     const utama = pengarangUtama(buku);
@@ -712,6 +750,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
               kondisi: e.kondisi,
               waktuDicatat: e.waktuDicatat,
               perluCetak: e.perluCetak,
+              dipinjam: pinjaman.get(e.id) ?? null,
             },
           ];
         }),
@@ -825,6 +864,9 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         if (e.menungguSinkron) {
           throw new ValidasiError("eksemplarId", "Eksemplar ini belum tersinkron. Sinkronkan dulu sebelum mengeluarkannya");
         }
+        if ((await idEksemplarDipinjam(db)).has(eksemplarId)) {
+          throw new ValidasiError("eksemplarId", "Eksemplar ini sedang dipinjam. Kembalikan dulu sebelum mengeluarkannya");
+        }
         let hasil;
         try {
           hasil = await transport.siangi(eksemplarId, input);
@@ -856,11 +898,28 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     "eksemplar.ubah": "Ubah",
     "eksemplar.koreksiKategori": "Koreksi Kategori",
     "eksemplar.tandaiTercetak": "Tandai tercetak",
+    "peminjaman.pinjamkan": "Pinjamkan",
+    "peminjaman.ubah": "Ubah Peminjaman",
+    "peminjam.ubah": "Ubah Peminjam",
   };
 
   async function ringkasan(m: Mutasi): Promise<string> {
     if (m.jenis === "buku.tambah") return `${KATA_JENIS[m.jenis]} ${m.buku.judul}`;
     if (m.jenis === "eksemplar.tandaiTercetak") return `${KATA_JENIS[m.jenis]} ${m.eksemplarIds.length} Label`;
+    if (m.jenis === "peminjam.ubah") {
+      const nama = (await db.peminjam.get(m.peminjamId))?.nama ?? "Peminjam";
+      return `Ubah ${Object.keys(m.perubahan).map(labelField).join(", ")} ${nama}`;
+    }
+    if (m.jenis === "peminjaman.pinjamkan" || m.jenis === "peminjaman.ubah") {
+      const eksemplarId =
+        m.jenis === "peminjaman.pinjamkan"
+          ? m.peminjaman.eksemplarId
+          : (await db.peminjaman.get(m.peminjamanId))?.eksemplarId;
+      const e = eksemplarId ? await db.eksemplar.get(eksemplarId) : undefined;
+      const judulBuku = (e && (await db.buku.get(e.bukuId))?.judul) || "Buku";
+      if (m.jenis === "peminjaman.pinjamkan") return `Pinjamkan ${judulBuku} ke ${m.peminjam.nama}`;
+      return `${"tanggalKembali" in m.perubahan ? "Kembalikan" : "Ubah jatuh tempo"} ${judulBuku}`;
+    }
     let bukuId: string;
     if (m.jenis === "eksemplar.catat") bukuId = m.eksemplar.bukuId;
     else if (m.jenis === "buku.ubah") bukuId = m.bukuId;
@@ -969,7 +1028,7 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
   }
 
   async function terapkanPull(res: PullResponse) {
-    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.outbox], async () => {
+    await db.transaction("rw", [...TABEL_DAFTAR, db.buku, db.eksemplar, db.outbox, db.peminjam, db.peminjaman], async () => {
       const lindung = await medanTertunda();
       await tulisDaftar(res);
       const bukuLama = new Map((await db.buku.bulkGet(res.buku.map((b) => b.id))).map((b) => [b?.id, b]));
@@ -1003,6 +1062,20 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
           ),
         ),
       );
+      const peminjamLama = new Map(
+        (await db.peminjam.bulkGet((res.peminjam ?? []).map((p) => p.id))).map((p) => [p?.id, p]),
+      );
+      await db.peminjam.bulkPut(
+        (res.peminjam ?? []).map((p) => pertahankan({ ...p }, peminjamLama.get(p.id), lindung.get(`peminjam:${p.id}`))),
+      );
+      const peminjamanLama = new Map(
+        (await db.peminjaman.bulkGet((res.peminjaman ?? []).map((p) => p.id))).map((p) => [p?.id, p]),
+      );
+      await db.peminjaman.bulkPut(
+        (res.peminjaman ?? []).map((p) =>
+          pertahankan({ ...p }, peminjamanLama.get(p.id), lindung.get(`peminjaman:${p.id}`)),
+        ),
+      );
       await db.meta.put({ key: META_KURSOR, value: res.kursor });
     });
   }
@@ -1023,6 +1096,45 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       let bukuId: string;
       let eksemplarId: string | null = null;
       let nomorInduk: string | null = null;
+      if (jenis === "peminjam") {
+        const p = await db.peminjam.get(id);
+        if (!p) continue;
+        await db.peminjam.update(id, { [field]: nilai } as Partial<PeminjamRow>);
+        const label = labelField(field);
+        hasil.push({
+          id: uuid(),
+          pada: now().getTime(),
+          bukuId: "",
+          eksemplarId: null,
+          judul: p.nama,
+          field,
+          label,
+          pesan: `${label} ${p.nama} diperbarui dari perangkat lain`,
+        });
+        continue;
+      }
+      if (jenis === "peminjaman") {
+        const pj = await db.peminjaman.get(id);
+        const e = pj && (await db.eksemplar.get(pj.eksemplarId));
+        if (!pj || !e) continue;
+        await db.peminjaman.update(id, { [field]: nilai } as Partial<PeminjamanRow>);
+        bukuId = e.bukuId;
+        eksemplarId = e.id;
+        nomorInduk = e.nomorInduk;
+        const judul = (await db.buku.get(bukuId))?.judul ?? "";
+        const label = labelField(field);
+        hasil.push({
+          id: uuid(),
+          pada: now().getTime(),
+          bukuId,
+          eksemplarId,
+          judul,
+          field,
+          label,
+          pesan: `${label} peminjaman ${judul}${nomorInduk ? ` (${nomorInduk})` : ""} diperbarui dari perangkat lain`,
+        });
+        continue;
+      }
       if (jenis === "buku") {
         bukuId = id;
         await db.buku.update(id, { [field]: nilai } as Partial<BukuRow>);
@@ -1070,12 +1182,20 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
         .slice(0, BATCH_PUSH);
       if (batch.length === 0) break;
       const res = await transport.push({ mutasi: batch.map((o) => o.mutasi) });
-      await db.transaction("rw", [db.outbox, db.eksemplar, db.buku, db.log], async () => {
+      await db.transaction(
+        "rw",
+        [db.outbox, db.eksemplar, db.buku, db.log, db.peminjam, db.peminjaman],
+        async () => {
         for (const h of res.hasil) {
           const entri = batch.find((o) => o.id === h.id);
           if (!entri) continue;
           if (h.status === "ditolak") {
             await db.outbox.update(entri.seq!, { ditolak: h.alasan });
+            // Pinjaman yang ditolak server (mis. Eksemplar sudah dipinjam dari perangkat lain)
+            // tidak berlaku: salinan lokal kembali sama dengan server.
+            if (entri.mutasi.jenis === "peminjaman.pinjamkan") {
+              await db.peminjaman.delete(entri.mutasi.peminjaman.id);
+            }
             ditolak++;
             continue;
           }
@@ -1348,6 +1468,18 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     statistik,
     penyiangan,
     detailBuku,
+    /** Peminjaman (tiket #10). */
+    pinjamkan: sesudahSiap(peminjaman.pinjamkan),
+    kembalikan: sesudahSiap(peminjaman.kembalikan),
+    ubahJatuhTempo: sesudahSiap(peminjaman.ubahJatuhTempo),
+    ubahPeminjam: sesudahSiap(peminjaman.ubahPeminjam),
+    daftarPeminjaman: sesudahSiap(peminjaman.bacaPeminjaman),
+    jumlahTerlambat: sesudahSiap(peminjaman.bacaJumlahTerlambat),
+    daftarPeminjam: sesudahSiap(peminjaman.bacaPeminjam),
+    /** Scan Label Barcode (teks Code 128) -> Eksemplar yang sesuai. */
+    cariDariPindai: sesudahSiap(peminjaman.cariDariPindai),
+    /** Tautan `wa.me` dengan pesan pengingat terisi; null bila Peminjam tak punya nomor. */
+    tautanPengingat: sesudahSiap(peminjaman.bacaTautanPengingat),
     statusSinkronisasi,
     daftarAntrean,
     cobaLagi,
@@ -1374,6 +1506,10 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
     pantauTemplateLabel: (cb: (t: TemplateLabelLengkap) => void) => pantau(bacaTemplateLabel, cb),
     pantauAntrean: (cb: (antrean: DaftarAntrean) => void) => pantau(bacaAntrean, cb),
     pantauLog: (cb: (log: LogRow[]) => void) => pantau(bacaLog, cb),
+    pantauPeminjaman: (cb: (daftar: DaftarPeminjaman) => void) => pantau(peminjaman.bacaPeminjaman, cb),
+    /** Jumlah terlambat (badge nav, chip Beranda); `jam` bergerak, jadi UI perlu memicu ulang saat tanggal berganti. */
+    pantauJumlahTerlambat: (cb: (jumlah: number) => void) => pantau(peminjaman.bacaJumlahTerlambat, cb),
+    pantauPeminjam: (cb: (daftar: ItemPeminjam[]) => void) => pantau(peminjaman.bacaPeminjam, cb),
   };
 }
 

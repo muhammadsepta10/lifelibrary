@@ -23,20 +23,11 @@ export const LABEL_STATUS_KOLEKSI: Record<StatusKoleksi, string> = {
 };
 
 /**
- * TITIK SAMBUNG TIKET #10 (Peminjaman). Satu-satunya tempat yang perlu diubah
- * agar filter "dipinjam" (dan "tersedia") bekerja: kembalikan id Eksemplar
- * yang sedang dipinjam, yaitu yang punya Peminjaman tanpa tanggal kembali.
- * Mis. setelah menambah tabel `peminjaman` di `LocalDb`:
- *
- *   return new Set(
- *     (await db.peminjaman.filter((p) => !p.tanggalKembali).toArray()).map((p) => p.eksemplarId),
- *   );
- *
- * Dipanggil dari pembaca Koleksi yang dipantau liveQuery, jadi tabel yang
- * dibaca di sini otomatis memicu pembaruan Koleksi. Filter, tipe `ItemKoleksi.dipinjam`,
- * dan UI sudah memakai hasilnya.
+ * Id Eksemplar yang sedang dipinjam: yang punya Peminjaman tanpa tanggal kembali.
+ * Dipanggil dari pembaca Koleksi yang dipantau liveQuery, jadi tabel `peminjaman`
+ * yang dibaca di sini otomatis memicu pembaruan Koleksi.
  */
 export async function idEksemplarDipinjam(db: LocalDb): Promise<Set<string>> {
-  void db;
-  return new Set();
+  const aktif = await db.peminjaman.filter((p) => p.tanggalKembali === null).toArray();
+  return new Set(aktif.map((p) => p.eksemplarId));
 }

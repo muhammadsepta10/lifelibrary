@@ -62,6 +62,10 @@ export function Penyiangan({ eksemplar }: { eksemplar: EksemplarDetail }) {
       </p>
       {eksemplar.menungguSinkron ? (
         <p className="mt-3 text-sm text-menunggu-fg">Sinkronkan dulu: Eksemplar ini belum diterima server.</p>
+      ) : eksemplar.dipinjam ? (
+        <p className="mt-3 text-sm text-menunggu-fg" data-testid="penyiangan-dipinjam">
+          Eksemplar ini sedang dipinjam. Kembalikan dulu sebelum mengeluarkannya.
+        </p>
       ) : !buka ? (
         <div className="mt-3 flex items-center gap-3">
           <button

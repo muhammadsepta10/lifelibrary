@@ -10,6 +10,7 @@ import {
 import type { HasilTanpaId } from "./hasil";
 import { tambahBuku, ubahBuku } from "./mutasi-buku";
 import { catatEksemplar, koreksiKategori, tandaiTercetak, ubahEksemplar } from "./mutasi-eksemplar";
+import { pinjamkan, ubahPeminjam, ubahPeminjaman } from "./mutasi-peminjaman";
 import type { Tx } from "./tx";
 
 export async function push(db: Db, input: unknown): Promise<PushResponse> {
@@ -36,6 +37,12 @@ function terapkan(tx: Tx, m: Mutasi): Promise<HasilTanpaId> {
       return tandaiTercetak(tx, m);
     case "eksemplar.koreksiKategori":
       return koreksiKategori(tx, m);
+    case "peminjaman.pinjamkan":
+      return pinjamkan(tx, m);
+    case "peminjaman.ubah":
+      return ubahPeminjaman(tx, m);
+    case "peminjam.ubah":
+      return ubahPeminjam(tx, m);
   }
 }
 

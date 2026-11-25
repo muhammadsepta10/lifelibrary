@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CloudOff, ClockArrowUp, House, KeyRound, Library, Menu, Plus, Tag } from "lucide-react";
+import { ArrowRightLeft, CloudOff, ClockArrowUp, House, KeyRound, Library, Menu, Plus, Tag } from "lucide-react";
 import { tentukanStrip } from "@/lib/status-aplikasi";
 import { cn } from "@/lib/utils";
 import { useLibrary } from "./library-provider";
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/", label: "Beranda", Icon: House },
   { href: "/koleksi", label: "Koleksi", Icon: Library },
   { href: "/tambah", label: "Tambah", Icon: Plus, fab: true },
+  { href: "/peminjaman", label: "Pinjam", Icon: ArrowRightLeft, terlambat: true },
   { href: "/sinkron", label: "Sinkron", Icon: ClockArrowUp, badge: true },
   { href: "/lainnya", label: "Lainnya", Icon: Menu },
 ] as const;
@@ -27,8 +28,9 @@ function aktif(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { status, online, jumlahCetak, keadaan } = useLibrary();
+  const { status, online, jumlahCetak, jumlahTerlambat, keadaan } = useLibrary();
   const strip = tentukanStrip({ online, keadaanSinkron: keadaan.jenis });
+  const terlambat = jumlahTerlambat ?? 0;
   const menunggu = status?.menunggu ?? 0;
   const gagal = status?.ditolak ?? 0;
   // Badge Sinkron: jumlah Menunggu Sinkron; "!" merah bila hanya ada yang Gagal terkirim.
@@ -58,6 +60,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className={cn("ml-auto rounded-full px-2 text-xs font-semibold", warnaBadge)}
               >
                 {badge}
+              </span>
+            )}
+            {"terlambat" in rest && terlambat > 0 && (
+              <span
+                data-testid="badge-terlambat"
+                aria-label={`${terlambat} terlambat`}
+                className="ml-auto rounded-full bg-bahaya px-2 text-xs font-semibold text-white"
+              >
+                {terlambat}
               </span>
             )}
           </Link>
@@ -145,6 +156,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   {badge}
+                </span>
+              )}
+              {"terlambat" in rest && terlambat > 0 && (
+                <span
+                  data-testid="badge-terlambat"
+                  aria-label={`${terlambat} terlambat`}
+                  className="absolute right-0 top-0.5 min-w-4 rounded-full bg-bahaya px-1 text-center text-[10px] font-bold text-white"
+                >
+                  {terlambat}
                 </span>
               )}
             </Link>

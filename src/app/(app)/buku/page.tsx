@@ -5,9 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowLeft, PencilLine, Plus } from "lucide-react";
 import { useDetailBuku } from "@/components/app/form";
+import { ChipPinjam } from "@/components/app/panel-pinjaman";
 import { StatusChip } from "@/components/app/status-chip";
 import { LABEL_ASAL, LABEL_KONDISI, LABEL_PERAN } from "@/lib/buku-fields";
 import type { EksemplarDetail } from "@/lib/local-library";
+import { tanggalIndonesia } from "@/lib/peminjaman/whatsapp";
 
 function Tiket({ bukuId, e }: { bukuId: string; e: EksemplarDetail }) {
   return (
@@ -30,10 +32,16 @@ function Tiket({ bukuId, e }: { bukuId: string; e: EksemplarDetail }) {
           ) : (
             <StatusChip menungguSinkron={e.menungguSinkron} />
           )}
+          {e.dipinjam && <ChipPinjam pinjaman={e.dipinjam} />}
           {e.kondisi && (
             <span className="rounded-full bg-paper px-2 py-1 text-xs font-medium">{LABEL_KONDISI[e.kondisi]}</span>
           )}
         </div>
+        {e.dipinjam && (
+          <p className="mt-2 text-xs text-ink-muted" data-testid="peminjam-tiket">
+            {e.dipinjam.peminjam.nama} · jatuh tempo {tanggalIndonesia(e.dipinjam.jatuhTempo)}
+          </p>
+        )}
         {e.perluCetak && <p className="mt-2 text-xs font-medium text-kategori-fg">Label di Antrean Cetak</p>}
       </Link>
     </li>

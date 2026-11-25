@@ -169,6 +169,49 @@ export const eksemplar = pgTable(
   (t) => [index("eksemplar_updated_at_idx").on(t.updatedAt), index("eksemplar_lokasi_idx").on(t.lokasiId)],
 );
 
+/** Orang di luar sistem yang meminjam Eksemplar: nama dan kontak, tanpa akun. */
+export const peminjam = pgTable(
+  "peminjam",
+  {
+    id: uuid("id").primaryKey(),
+    nama: text("nama").notNull(),
+    kontak: text("kontak"),
+    /** Waktu terakhir tiap field diubah (UTC ISO); dasar penyelesaian konflik per field. */
+    fieldWaktu: jsonb("field_waktu").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [index("peminjam_updated_at_idx").on(t.updatedAt)],
+);
+
+/** Satu Eksemplar yang dipinjamkan ke seorang Peminjam. Tanpa denda. */
+export const peminjaman = pgTable(
+  "peminjaman",
+  {
+    id: uuid("id").primaryKey(),
+    eksemplarId: uuid("eksemplar_id")
+      .notNull()
+      .references(() => eksemplar.id),
+    peminjamId: uuid("peminjam_id")
+      .notNull()
+      .references(() => peminjam.id),
+    tanggalPinjam: date("tanggal_pinjam", { mode: "string" }).notNull(),
+    jatuhTempo: date("jatuh_tempo", { mode: "string" }).notNull(),
+    /** Null selama masih dipinjam. */
+    tanggalKembali: date("tanggal_kembali", { mode: "string" }),
+    fieldWaktu: jsonb("field_waktu").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
+    updatedAt: serverTime("updated_at"),
+  },
+  (t) => [
+    // Satu Eksemplar hanya punya satu Peminjaman yang belum kembali. Menjaga
+    // dua perangkat yang meminjamkan Eksemplar yang sama secara bersamaan.
+    uniqueIndex("peminjaman_eksemplar_aktif_uq")
+      .on(t.eksemplarId)
+      .where(sql`${t.tanggalKembali} is null`),
+    index("peminjaman_peminjam_idx").on(t.peminjamId),
+    index("peminjaman_updated_at_idx").on(t.updatedAt),
+  ],
+);
+
 /** Penghitung Nomor Induk per (kode Kategori, tahun pencatatan). */
 export const nomorIndukCounter = pgTable(
   "nomor_induk_counter",
