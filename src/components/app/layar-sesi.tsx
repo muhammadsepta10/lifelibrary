@@ -245,7 +245,10 @@ export function LayarSesi({
         )}
       </div>
 
-      <div className="relative z-10 flex max-h-[62%] flex-col gap-2 bg-gradient-to-t from-black/85 via-black/70 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8">
+      {/* Panel bawah mengambil sisa tinggi setelah header dan kotak bidik (min-h-0),
+          bukan persentase tetap: kalau tidak, kartu yang menumpuk mendorong isian
+          ISBN dan tombol keluar layar. Hanya daftar kartu yang menyusut dan di-scroll. */}
+      <div className="relative z-10 flex min-h-0 flex-col gap-2 bg-gradient-to-t from-black/85 via-black/70 to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8">
         {pesan && (
           <p
             role="alert"
@@ -256,7 +259,7 @@ export function LayarSesi({
         )}
 
         {kartuTerbaruDulu.length > 0 && (
-          <ul aria-label="Hasil scan" className="flex flex-col gap-2 overflow-y-auto">
+          <ul aria-label="Hasil scan" className="flex min-h-0 flex-col gap-2 overflow-y-auto">
             {kartuTerbaruDulu.map((k) => (
               <KartuHasil
                 key={k.id}
@@ -271,7 +274,7 @@ export function LayarSesi({
           </ul>
         )}
 
-        <form onSubmit={kirimIsbn} className="flex gap-2" noValidate>
+        <form onSubmit={kirimIsbn} className="flex shrink-0 gap-2" noValidate>
           <label htmlFor="isbn-sesi" className="sr-only">
             ISBN
           </label>
@@ -292,7 +295,7 @@ export function LayarSesi({
             <Search className="size-5" aria-hidden />
           </button>
         </form>
-        <button type="button" onClick={isiManual} className="min-h-11 rounded-2xl bg-white/15 text-sm font-semibold">
+        <button type="button" onClick={isiManual} className="min-h-11 shrink-0 rounded-2xl bg-white/15 text-sm font-semibold">
           Tanpa ISBN? Isi manual
         </button>
       </div>
