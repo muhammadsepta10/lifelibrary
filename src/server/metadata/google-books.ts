@@ -1,12 +1,18 @@
+import { MAKS_KANDIDAT, MAKS_SUBJEK, type Kandidat } from "@/lib/draf-buku";
 import { normalisasiIsbn } from "@/lib/isbn";
+import type { MasukanKandidat } from "@/lib/judul-kandidat";
 import { bacaJson, type Panggil } from "./http";
+import { angka, isiOpsional, rekam, teks, teksArray, type Rekam } from "./mentah";
 import { ambilTahun, namaBahasa, rapikan, type Parsial } from "./parsial";
 
-type Rekam = Record<string, unknown>;
-const rekam = (x: unknown): Rekam | null => (x && typeof x === "object" ? (x as Rekam) : null);
-const teks = (x: unknown) => (typeof x === "string" && x.trim() !== "" ? x.trim() : undefined);
-const teksArray = (x: unknown): string[] =>
-  Array.isArray(x) ? x.filter((v): v is string => typeof v === "string" && v.trim() !== "") : [];
+/** Deskripsi Google berisi HTML ringan: tag dibuang, spasi dirapatkan. */
+const sinopsisBersih = (x: unknown) => teks(x)?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+/** Thumbnail Google kadang `http://`; unduhan sampul hanya menerima https. */
+function sampulKecil(imageLinks: unknown): string | undefined {
+  const l = rekam(imageLinks);
+  return (teks(l?.thumbnail) ?? teks(l?.smallThumbnail))?.replace(/^http:\/\//, "https://");
+}
 
 const URL_DASAR = "https://www.googleapis.com/books/v1/volumes";
 
@@ -50,12 +56,58 @@ export async function cariGoogleBooks(panggil: Panggil, isbn13: string, kunci: s
   hasil.seri = rapikan(teks(infoSeri?.shortSeriesBookTitle));
   hasil.jilid = teks(infoSeri?.bookDisplayNumber);
   hasil.tahun = ambilTahun(teks(v.publishedDate));
-  hasil.halaman = typeof v.pageCount === "number" && v.pageCount > 0 ? v.pageCount : undefined;
-  hasil.sinopsis = teks(v.description)?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  hasil.halaman = angka(v.pageCount);
+  hasil.sinopsis = sinopsisBersih(v.description);
   hasil.bahasa = namaBahasa(teks(v.language) ?? "");
   const kategori = teksArray(v.categories);
   if (kategori.length) hasil.subjek = kategori;
-  const kecil = teks(rekam(v.imageLinks)?.thumbnail) ?? teks(rekam(v.imageLinks)?.smallThumbnail);
-  if (kecil) hasil.sampul = [kecil.replace(/^http:\/\//, "https://")];
+  const kecil = sampulKecil(v.imageLinks);
+  if (kecil) hasil.sampul = [kecil];
   return hasil;
+}
+
+/** Tanda kutip dibuang dari masukan supaya frasa `intitle:"..."` tidak pecah. */
+const frasa = (s: string) => s.replace(/["“”]/g, "").replace(/\s+/g, " ").trim();
+
+/**
+ * Pencarian lewat judul (+ pengarang) dengan `intitle:` dan `inauthor:`.
+ * Hasilnya Kandidat tingkat terbitan tanpa ISBN (ISBN hasil scan tidak
+ * pernah diganti). Volume tanpa judul dibuang.
+ */
+export async function cariKandidatGoogle(
+  panggil: Panggil,
+  { judul, pengarang }: MasukanKandidat,
+  kunci: string,
+): Promise<Kandidat[]> {
+  const kueri = [`intitle:"${frasa(judul)}"`, pengarang && frasa(pengarang) ? `inauthor:"${frasa(pengarang)}"` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const params = new URLSearchParams({ q: kueri, maxResults: String(MAKS_KANDIDAT), key: kunci });
+  const badan = rekam(await bacaJson(await panggil(`${URL_DASAR}?${params}`)));
+  const items = Array.isArray(badan?.items) ? badan.items : [];
+
+  const hasil: Kandidat[] = [];
+  for (const mentah of items) {
+    const item = rekam(mentah);
+    const v = rekam(item?.volumeInfo);
+    const id = teks(item?.id);
+    const utama = rapikan(teks(v?.title));
+    if (!v || !id || !utama) continue;
+    const subjudul = rapikan(teks(v.subtitle));
+    const k: Kandidat = { id: `google:${id}`, sumber: "google", judul: subjudul ? `${utama}: ${subjudul}` : utama };
+    const nama = teksArray(v.authors);
+    if (nama.length) k.pengarang = nama;
+    const subjek = teksArray(v.categories).slice(0, MAKS_SUBJEK);
+    if (subjek.length) k.subjek = subjek;
+    isiOpsional(k, {
+      penerbit: rapikan(teks(v.publisher)),
+      tahun: ambilTahun(teks(v.publishedDate)),
+      halaman: angka(v.pageCount),
+      sinopsis: sinopsisBersih(v.description),
+      bahasa: namaBahasa(teks(v.language) ?? ""),
+      sampulUrl: sampulKecil(v.imageLinks),
+    });
+    hasil.push(k);
+  }
+  return hasil.slice(0, MAKS_KANDIDAT);
 }

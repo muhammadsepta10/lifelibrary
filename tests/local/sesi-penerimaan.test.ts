@@ -271,6 +271,40 @@ describe("Sesi Penerimaan: kartu hasil scan dan statusnya", () => {
     expect(kartu.catatan).toContain("Isi datanya manual");
   });
 
+  it("cadangan judul hanya untuk kartu yang ISBN-nya tidak ditemukan, terpisah per kartu", async () => {
+    const sesi = await mulai({
+      cariMetadata: async (isbn13) =>
+        isbn13 === ISBN_A ? ditemukan(isbn13) : { ditemukan: false, isbn13, sumber: [{ sumber: "loc", status: "kosong" }], semuaGalat: false },
+    });
+
+    await pindaiSelesai(sesi, ISBN_A);
+    await pindaiSelesai(sesi, ISBN_B);
+    const manual = sesi.isiManual();
+
+    const kartu = await sesi.kartu();
+    expect(kartu.find((k) => k.isbn13 === ISBN_A)?.cadanganJudul).toBe(false);
+    expect(kartu.find((k) => k.isbn13 === ISBN_B)?.cadanganJudul).toBe(true);
+    expect(kartu.find((k) => k.id === manual.kartuId)?.cadanganJudul).toBe(false);
+  });
+
+  it("tanpa cadangan judul bila semua sumber gagal, offline, atau login habis; coba lagi mengosongkan lalu menghitung ulang", async () => {
+    let jawaban: () => Promise<HasilPencarianMetadata> = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    const sesi = await mulai({ cariMetadata: () => jawaban() });
+
+    const offlineId = await pindaiSelesai(sesi, ISBN_A);
+    expect((await sesi.kartu())[0].cadanganJudul).toBe(false);
+
+    jawaban = async () => ({ ditemukan: false, isbn13: ISBN_A, sumber: [{ sumber: "google", status: "galat" }], semuaGalat: true });
+    await sesi.cobaLagi(offlineId);
+    expect((await sesi.kartu())[0].cadanganJudul).toBe(false);
+
+    jawaban = async () => ({ ditemukan: false, isbn13: ISBN_A, sumber: [{ sumber: "loc", status: "kosong" }], semuaGalat: false });
+    await sesi.cobaLagi(offlineId);
+    expect((await sesi.kartu())[0].cadanganJudul).toBe(true);
+  });
+
   it("pencarian gagal (offline): kartu Menunggu data, bisa dicoba lagi manual dan lengkap setelah online", async () => {
     let panggilan = 0;
     const sesi = await mulai({

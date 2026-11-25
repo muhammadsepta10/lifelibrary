@@ -38,6 +38,16 @@ _Hindari_: main author
 Rangkaian pencatatan Eksemplar beruntun yang berbagi tanggal masuk, asal, dan Lokasi yang sama (misalnya belanja 10 buku sekaligus, atau input koleksi lama).
 _Hindari_: batch, bulk input
 
+### Metadata
+
+**Pencarian Metadata ISBN**:
+Pencarian data Buku ke sumber gratis (Open Library, Google Books, Library of Congress) memakai ISBN hasil scan; jalur utama untuk melengkapi draf Buku. Menjawab "tidak ditemukan" bila sumber bisa dihubungi tetapi tidak satu pun punya ISBN itu.
+_Hindari_: lookup, fetch metadata, auto-fill
+
+**Kandidat**:
+Satu hasil pencarian cadangan lewat judul yang bisa dipilih Pemilik untuk melengkapi draf Buku. Tidak pernah diterapkan otomatis; memilihnya hanya mengisi field draf yang masih kosong dan menandainya "perlu dicek".
+_Hindari_: suggestion, match
+
 ### Kategorisasi
 
 **Kategori**:

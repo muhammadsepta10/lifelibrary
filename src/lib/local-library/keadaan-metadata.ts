@@ -12,6 +12,8 @@ export type KeadaanMetadata = {
   sumber: StatusSumber[];
   catatan: string | null;
   bisaCobaLagi: boolean;
+  /** ISBN tidak ditemukan padahal sumber bisa dihubungi: pencarian cadangan lewat judul boleh ditawarkan (ADR 0007). */
+  cadanganJudul: boolean;
 };
 
 /** Penyebab yang membuat pencarian harus menunggu, bukan gagal: tanpa jaringan (fetch -> TypeError) atau sesi login habis. */
@@ -21,13 +23,14 @@ export function pencarianPerluMenunggu(e: unknown): boolean {
 
 export function dariHasil(isbn13: string, hasil: HasilPencarianMetadata): KeadaanMetadata {
   if (hasil.ditemukan) {
-    return { status: "siap", draf: hasil.draf, sumber: hasil.sumber, catatan: null, bisaCobaLagi: false };
+    return { status: "siap", draf: hasil.draf, sumber: hasil.sumber, catatan: null, bisaCobaLagi: false, cadanganJudul: false };
   }
   return {
     status: "siap",
     draf: drafKosong(isbn13),
     sumber: hasil.sumber,
     bisaCobaLagi: hasil.semuaGalat,
+    cadanganJudul: !hasil.semuaGalat,
     catatan: hasil.semuaGalat
       ? "Sumber metadata tidak bisa dihubungi. Coba lagi sebentar lagi, atau isi datanya manual."
       : `ISBN ${isbn13} belum ada di Open Library, Google Books, maupun Library of Congress. Isi datanya manual, ISBN sudah terisi.`,
@@ -42,6 +45,7 @@ export function dariGalat(isbn13: string, e: unknown): KeadaanMetadata {
       draf,
       sumber: [],
       bisaCobaLagi: true,
+      cadanganJudul: false,
       catatan: "Sesi login habis. Masuk lagi, maka metadata dicari otomatis. Atau isi datanya manual.",
     };
   }
@@ -51,6 +55,7 @@ export function dariGalat(isbn13: string, e: unknown): KeadaanMetadata {
       draf,
       sumber: [],
       bisaCobaLagi: true,
+      cadanganJudul: false,
       catatan: "Tidak ada koneksi. Draf ini disimpan di perangkat, dan metadatanya dicari otomatis begitu online.",
     };
   }
@@ -59,6 +64,7 @@ export function dariGalat(isbn13: string, e: unknown): KeadaanMetadata {
     draf,
     sumber: [],
     bisaCobaLagi: true,
+    cadanganJudul: false,
     catatan: "Pencarian metadata gagal. Coba lagi, atau isi datanya manual.",
   };
 }

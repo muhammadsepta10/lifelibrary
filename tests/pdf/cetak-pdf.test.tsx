@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { chromium } from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CSS_CETAK, LembarCetak } from "@/components/app/label/lembar-cetak";
@@ -63,6 +64,24 @@ function cetakKePdf(nama: string, rencana: RencanaCetak, denganCangkang = false)
     { stdio: "ignore", timeout: 45000 },
   );
   return berkasPdf;
+}
+
+/**
+ * Meniru dialog cetak browser dengan "Background graphics" mati (bawaan Chrome
+ * dan Safari): latar belakang tidak dicetak kecuali CSS meminta `print-color-adjust: exact`.
+ */
+async function cetakTanpaLatar(nama: string, rencana: RencanaCetak) {
+  const html = `<!doctype html><html lang="id"><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}</style></head><body><div data-cetak-root><style>${CSS_CETAK}</style>${renderToStaticMarkup(<LembarCetak rencana={rencana} />)}</div></body></html>`;
+  const browser = await chromium.launch({ executablePath: CHROME });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html);
+    const berkasPdf = join(kerja, `${nama}.pdf`);
+    await page.pdf({ path: berkasPdf, preferCSSPageSize: true, printBackground: false });
+    return berkasPdf;
+  } finally {
+    await browser.close();
+  }
 }
 
 function infoPdf(pdf: string) {
@@ -245,5 +264,46 @@ describe.skipIf(!CHROME || !punyaPoppler)("PDF hasil cetak dari browser", () => 
     expect(tinta(6, 5.5, 72, 31.5)).toBe(true);
     expect(tinta(72, 5.5, 204, 291.5)).toBe(false);
     expect(tinta(6, 31.5, 72, 291.5)).toBe(false);
+  });
+
+  it("dialog cetak tanpa Background graphics: pita Kategori tetap berwarna seperti di pratinjau", async () => {
+    const r = await rencana({ jumlah: 1 });
+
+    const g = rasterisasi(await cetakTanpaLatar("tanpa-latar", r), 1);
+
+    // Sel 1 (6..72 x 5.5..31.5): pita FIK oranye di 5 mm teratas Label Punggung (17 mm).
+    let oranyeDitemukan = 0;
+    for (let y = 6 * PX_PER_MM; y < 10 * PX_PER_MM; y += 3)
+      for (let x = 7 * PX_PER_MM; x < 22 * PX_PER_MM; x += 3) if (oranye(rgb(g, Math.round(x), Math.round(y)))) oranyeDitemukan++;
+    expect(oranyeDitemukan).toBeGreaterThan(100);
+  });
+
+  it("pemandu potong: tanda di margin kiri dan kanan pada setiap batas baris, tanda di margin atas dan bawah pada setiap batas kolom", async () => {
+    const r = await rencana({ jumlah: 1 });
+    const g = rasterisasi(await cetakTanpaLatar("pemandu", r), 1);
+    const tidakPutih = (x: number, y: number) => !putih(rgb(g, Math.round(x * PX_PER_MM), Math.round(y * PX_PER_MM)));
+    const pusat = (sumbu: "x" | "y", tetap: number) => {
+      const panjang = (sumbu === "x" ? g.lebar : g.tinggi) / PX_PER_MM;
+      const hasil: number[] = [];
+      let awal = -1;
+      for (let i = 0; i <= panjang * PX_PER_MM; i++) {
+        const mm = i / PX_PER_MM;
+        const ya = mm < panjang && (sumbu === "x" ? tidakPutih(mm, tetap) : tidakPutih(tetap, mm));
+        if (ya && awal < 0) awal = mm;
+        if (!ya && awal >= 0) {
+          hasil.push((awal + mm) / 2);
+          awal = -1;
+        }
+      }
+      return hasil;
+    };
+    // Batas baris: y = 5.5 + k*26 (k = 0..11). Margin kiri 0..6 mm dan kanan 204..210 mm bebas dari isi Label.
+    const batasBaris = Array.from({ length: 12 }, (_, k) => 5.5 + k * 26);
+    expect(seMm(pusat("y", 3), batasBaris, 0.4)).toBe(true);
+    expect(seMm(pusat("y", 207), batasBaris, 0.4)).toBe(true);
+    // Batas kolom: x = 6 + k*66 (k = 0..3). Margin atas 0..5.5 mm dan bawah 291.5..297 mm.
+    const batasKolom = [6, 72, 138, 204];
+    expect(seMm(pusat("x", 2.75), batasKolom, 0.4)).toBe(true);
+    expect(seMm(pusat("x", 294.25), batasKolom, 0.4)).toBe(true);
   });
 });

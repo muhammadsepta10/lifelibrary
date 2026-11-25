@@ -1,4 +1,7 @@
+import { MAKS_KANDIDAT, MAKS_SUBJEK, type Kandidat } from "@/lib/draf-buku";
+import type { MasukanKandidat } from "@/lib/judul-kandidat";
 import { bacaJson, GalatSumber, type Panggil } from "./http";
+import { angka, isiOpsional, rekam, teks, teksArray } from "./mentah";
 import { ambilSatu, ambilTahun, namaBahasa, normalisasiDdc, rapikan, type Parsial } from "./parsial";
 
 const FIELD_PENCARIAN = [
@@ -14,12 +17,6 @@ const FIELD_PENCARIAN = [
   "language",
 ].join(",");
 
-type Rekam = Record<string, unknown>;
-const rekam = (x: unknown): Rekam | null => (x && typeof x === "object" ? (x as Rekam) : null);
-const teksArray = (x: unknown): string[] =>
-  Array.isArray(x) ? x.filter((v): v is string => typeof v === "string" && v.trim() !== "") : [];
-const teks = (x: unknown) => (typeof x === "string" && x.trim() !== "" ? x.trim() : undefined);
-const angka = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : undefined);
 const sampulId = (id: unknown) => (typeof id === "number" && id > 0 ? `https://covers.openlibrary.org/b/id/${id}-L.jpg` : undefined);
 
 /**
@@ -97,4 +94,59 @@ export async function cariOpenLibrary(panggil: Panggil, isbn13: string): Promise
   if (kandidat.length) hasil.sampul = [...new Set(kandidat)];
 
   return hasil;
+}
+
+const FIELD_KANDIDAT = [
+  "key",
+  "title",
+  "author_name",
+  "first_publish_year",
+  "publisher",
+  "language",
+  "subject",
+  "ddc",
+  "cover_i",
+  "number_of_pages_median",
+].join(",");
+
+/**
+ * Pencarian tingkat karya lewat judul (+ pengarang bila ada). Hasilnya
+ * Kandidat: hanya field bibliografis, tanpa ISBN (ISBN hasil scan tidak
+ * pernah diganti). Penerbit dan tahun mengikuti edisi yang dikenal sumber,
+ * jadi Pemilik perlu mencocokkannya dengan buku fisik.
+ */
+export async function cariKandidatOpenLibrary(
+  panggil: Panggil,
+  { judul, pengarang }: MasukanKandidat,
+): Promise<Kandidat[]> {
+  const params = new URLSearchParams({ title: judul });
+  if (pengarang) params.set("author", pengarang);
+  params.set("fields", FIELD_KANDIDAT);
+  params.set("limit", String(MAKS_KANDIDAT));
+  const badan = rekam(await bacaJson(await panggil(`https://openlibrary.org/search.json?${params}`)));
+  const docs = Array.isArray(badan?.docs) ? badan.docs : [];
+
+  const hasil: Kandidat[] = [];
+  for (const mentah of docs) {
+    const doc = rekam(mentah);
+    const kunci = teks(doc?.key)?.split("/").pop();
+    const judulKandidat = rapikan(teks(doc?.title));
+    if (!doc || !kunci || !judulKandidat) continue;
+    const k: Kandidat = { id: `openlibrary:${kunci}`, sumber: "openlibrary", judul: judulKandidat };
+    const nama = teksArray(doc.author_name);
+    if (nama.length) k.pengarang = nama;
+    const bahasa = teksArray(doc.language);
+    const subjek = teksArray(doc.subject).slice(0, MAKS_SUBJEK);
+    if (subjek.length) k.subjek = subjek;
+    isiOpsional(k, {
+      penerbit: rapikan(teksArray(doc.publisher)[0]),
+      tahun: angka(doc.first_publish_year),
+      halaman: angka(doc.number_of_pages_median),
+      bahasa: bahasa.length === 1 ? namaBahasa(bahasa[0]) : undefined,
+      kelasDdc: teksArray(doc.ddc).map(normalisasiDdc).find(Boolean),
+      sampulUrl: sampulId(doc.cover_i),
+    });
+    hasil.push(k);
+  }
+  return hasil.slice(0, MAKS_KANDIDAT);
 }

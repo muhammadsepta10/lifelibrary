@@ -1,5 +1,22 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { JEDA_PENCARIAN_MS } from "../src/lib/judul-kandidat";
 import { BASE_URL, envE2E } from "./env";
+
+/** Cukup lama untuk memastikan pencarian judul yang tertunda (jeda ketikan) sudah akan berjalan bila memang dijadwalkan. */
+export const LEWAT_JEDA_PENCARIAN_MS = JEDA_PENCARIAN_MS + 400;
+/** Waktu bagi UI menerapkan balasan yang baru tiba sebelum memeriksa bahwa sesuatu tidak muncul. */
+export const LEWAT_RENDER_MS = 500;
+
+/**
+ * ISBN-13 sah berawalan 978602 yang unik per `n`. Tiap tes memakai `n` sendiri
+ * karena Buku yang tersimpan bertahan di basis data e2e selama satu proses
+ * `pnpm e2e`; dengan begitu tes tidak bergantung pada urutan.
+ */
+export function isbn13(n: number) {
+  const dua12 = `978602${String(n).padStart(6, "0")}`;
+  const jumlah = [...dua12].reduce((s, d, i) => s + Number(d) * (i % 2 === 0 ? 1 : 3), 0);
+  return dua12 + ((10 - (jumlah % 10)) % 10);
+}
 
 /**
  * Login lewat layar Masuk. Better Auth membatasi login 3 kali per 10 detik; bila ditolak
