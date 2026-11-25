@@ -5,9 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { HasilCariEksemplar } from "@/lib/local-library";
 import { tanggalIndonesia } from "@/lib/peminjaman/whatsapp";
 import { umpanBalikScan } from "@/lib/umpan-balik-scan";
-import { cn } from "@/lib/utils";
 import { AksiPinjaman, LembarPinjam } from "./aksi-pinjaman";
 import { KameraScanner } from "./kamera-scanner";
+import { KotakPindai, useKotakPindai } from "./kotak-pindai";
 import { useLibrary } from "./library-provider";
 import { ChipPinjam } from "./panel-pinjaman";
 
@@ -36,6 +36,7 @@ export function LayarPindaiLabel({
   const [nomor, setNomor] = useState("");
   const [pinjam, setPinjam] = useState(false);
   const timerPesan = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { keadaan: keadaanKotak, terbaca: kotakTerbaca, berhasil: kotakBerhasil, ditolak: kotakDitolak } = useKotakPindai(kameraDiinginkan && kamera === "aktif" && hasil === null && !pinjam);
 
   useEffect(() => () => clearTimeout(timerPesan.current), []);
 
@@ -46,20 +47,23 @@ export function LayarPindaiLabel({
   }, []);
 
   const tangani = useCallback(
-    async (teks: string) => {
+    async (teks: string, dariKamera = false) => {
       if (!library) return;
+      if (dariKamera) kotakTerbaca();
       const h = await library.cariDariPindai(teks);
       if (h.jenis === "eksemplar") {
+        if (dariKamera) kotakBerhasil();
         umpanBalikScan("berhasil");
         setPesan(null);
         setHasil(h.eksemplar);
         setNomor("");
       } else {
+        if (dariKamera) kotakDitolak();
         umpanBalikScan("tolak");
         tampilkanPesan(h.pesan);
       }
     },
-    [library, tampilkanPesan],
+    [library, tampilkanPesan, kotakTerbaca, kotakBerhasil, kotakDitolak],
   );
 
   // Setelah Pinjamkan/Kembalikan daftar Peminjaman berubah: muat ulang kartu hasil.
@@ -89,7 +93,7 @@ export function LayarPindaiLabel({
         <KameraScanner
           formats={["ean_13", "code_128"]}
           jeda={terbuka}
-          onBaca={(teks) => void tangani(teks)}
+          onBaca={(teks) => void tangani(teks, true)}
           onKeadaan={(k) => {
             setKamera(k.jenis === "memulai" ? "memulai" : k.jenis === "aktif" ? "aktif" : "galat");
             setPesanKamera(k.jenis === "galat" ? k.pesan : null);
@@ -124,18 +128,13 @@ export function LayarPindaiLabel({
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
         {kameraDiinginkan && kamera !== "galat" && (
-          <>
-            <div
-              aria-hidden
-              className={cn(
-                "aspect-[16/9] w-full max-w-sm rounded-2xl border-[3px] border-white/80 transition-colors",
-                hasil && "border-emerald-400",
-              )}
-            />
-            <p className="mt-3 rounded-full bg-black/50 px-4 py-1.5 text-center text-sm">
-              {kamera === "memulai" ? "Menyalakan kamera…" : "Arahkan barcode di Label ke dalam kotak"}
-            </p>
-          </>
+          <KotakPindai
+            keadaan={keadaanKotak}
+            memulai={kamera === "memulai"}
+            arahan="Arahkan barcode di Label ke dalam kotak"
+            saranBelumTerbaca="Barcode belum terbaca. Jauhkan HP sedikit, hindari pantulan cahaya, atau ketik Nomor Induk di bawah."
+            paksaHijau={hasil !== null}
+          />
         )}
         {kameraDiinginkan && pesanKamera && (
           <p role="status" className="max-w-sm rounded-2xl bg-black/70 p-4 text-center text-sm">
