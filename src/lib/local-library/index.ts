@@ -87,6 +87,7 @@ export type {
   PinjamanAktif,
 } from "./peminjaman";
 export { bacaNomorInduk, POLA_NOMOR_INDUK } from "@/lib/nomor-induk";
+export { tanggalLokal } from "./peminjaman";
 export type { Statistik } from "./statistik";
 export type { BarisBukuInduk } from "@/lib/buku-induk";
 export { normalisasiIsbn, type HasilIsbn } from "@/lib/isbn";

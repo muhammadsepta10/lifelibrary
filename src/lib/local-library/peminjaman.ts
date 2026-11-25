@@ -63,6 +63,8 @@ export type ItemPeminjaman = {
   terlambat: boolean;
   /** Hari lewat jatuh tempo (0 bila belum terlambat atau sudah kembali). */
   hariTerlambat: number;
+  /** Tautan `wa.me` dengan pesan pengingat; null bila sudah kembali atau Peminjam tak punya nomor. */
+  tautanPengingat: string | null;
 };
 
 export type DaftarPeminjaman = {
@@ -90,6 +92,7 @@ export type PinjamanAktif = {
   jatuhTempo: string;
   terlambat: boolean;
   hariTerlambat: number;
+  tautanPengingat: string | null;
 };
 
 /** Hasil scan Label Barcode: Eksemplar yang cocok dan keadaannya. */
@@ -137,6 +140,13 @@ export function buatPeminjaman({ db, now, uuid, antre }: Dep) {
   const hitung = (jatuhTempo: string, tanggalKembali: string | null) => {
     const lewat = tanggalKembali === null ? selisihHari(jatuhTempo, hariIni()) : 0;
     return { terlambat: lewat > 0, hariTerlambat: Math.max(0, lewat) };
+  };
+
+  const susunTautan = (p: PeminjamRow, judul: string, jatuhTempo: string, tanggalKembali: string | null) => {
+    const nomor = normalisasiNomorWa(p.kontak);
+    if (!nomor || tanggalKembali) return null;
+    const { terlambat } = hitung(jatuhTempo, null);
+    return tautanWhatsApp(nomor, pesanPengingat({ nama: p.nama, judul, jatuhTempo, terlambat }));
   };
 
   const pinjamanAktifEksemplar = async (eksemplarId: string): Promise<PeminjamanRow | undefined> =>
@@ -314,6 +324,7 @@ export function buatPeminjaman({ db, now, uuid, antre }: Dep) {
           jatuhTempo: p.jatuhTempo,
           tanggalKembali: p.tanggalKembali,
           ...hitung(p.jatuhTempo, p.tanggalKembali),
+          tautanPengingat: susunTautan(pem, b.judul, p.jatuhTempo, p.tanggalKembali),
         },
       ];
     });
@@ -352,14 +363,16 @@ export function buatPeminjaman({ db, now, uuid, antre }: Dep) {
   async function pinjamanAktif(eksemplarId: string): Promise<PinjamanAktif | null> {
     const p = await pinjamanAktifEksemplar(eksemplarId);
     if (!p) return null;
-    const peminjam = await db.peminjam.get(p.peminjamId);
+    const [peminjam, e] = await Promise.all([db.peminjam.get(p.peminjamId), db.eksemplar.get(eksemplarId)]);
     if (!peminjam) return null;
+    const judul = (e && (await db.buku.get(e.bukuId))?.judul) || "";
     return {
       peminjamanId: p.id,
       peminjam,
       tanggalPinjam: p.tanggalPinjam,
       jatuhTempo: p.jatuhTempo,
       ...hitung(p.jatuhTempo, null),
+      tautanPengingat: susunTautan(peminjam, judul, p.jatuhTempo, null),
     };
   }
 
@@ -405,13 +418,11 @@ export function buatPeminjaman({ db, now, uuid, antre }: Dep) {
    */
   async function bacaTautanPengingat(peminjamanId: string): Promise<string | null> {
     const p = await db.peminjaman.get(peminjamanId);
-    if (!p || p.tanggalKembali) return null;
+    if (!p) return null;
     const [peminjam, e] = await Promise.all([db.peminjam.get(p.peminjamId), db.eksemplar.get(p.eksemplarId)]);
-    const nomor = normalisasiNomorWa(peminjam?.kontak);
     const b = e && (await db.buku.get(e.bukuId));
-    if (!peminjam || !nomor || !b) return null;
-    const { terlambat } = hitung(p.jatuhTempo, null);
-    return tautanWhatsApp(nomor, pesanPengingat({ nama: peminjam.nama, judul: b.judul, jatuhTempo: p.jatuhTempo, terlambat }));
+    if (!peminjam || !b) return null;
+    return susunTautan(peminjam, b.judul, p.jatuhTempo, p.tanggalKembali);
   }
 
   return {

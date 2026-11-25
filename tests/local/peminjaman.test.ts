@@ -252,6 +252,8 @@ describe("Perpustakaan Lokal: pengingat WhatsApp", () => {
     expect(pesan).toContain("9 Desember 2026");
     expect(pesan).toContain("Rina");
     expect(pesan).not.toMatch(/denda/i);
+    // Daftar Peminjaman membawa tautan yang sama untuk tombol WhatsApp.
+    expect((await lib.daftarPeminjaman()).aktif[0].tautanPengingat).toBe(url.href);
   });
 
   it.each([

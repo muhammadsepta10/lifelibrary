@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, CloudOff } from "lucide-react";
 import { KelolaDitolakError } from "@/lib/kelola-protocol";
-import { ButuhKoneksiError } from "@/lib/local-library";
+import { ButuhKoneksiError, ValidasiError } from "@/lib/local-library";
 import { LoginDiperlukanError } from "@/lib/sync/fetch-transport";
 import { cn } from "@/lib/utils";
 import { useLibrary } from "./library-provider";
@@ -48,6 +48,7 @@ export function useAksi() {
       return true;
     } catch (e) {
       if (e instanceof KelolaDitolakError) setGalat({ field: e.field, pesan: e.pesan });
+      else if (e instanceof ValidasiError) setGalat({ field: e.field, pesan: e.pesan });
       else if (e instanceof ButuhKoneksiError) setGalat({ field: null, pesan: e.message });
       else if (e instanceof LoginDiperlukanError) setGalat({ field: null, pesan: e.message });
       else setGalat({ field: null, pesan: "Gagal menyimpan. Coba lagi" });
