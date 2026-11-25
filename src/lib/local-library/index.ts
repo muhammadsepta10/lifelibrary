@@ -679,6 +679,15 @@ export function createLocalLibrary(opts: CreateOptions = {}) {
       if (!e) throw new ValidasiError("eksemplarId", "Eksemplar tidak ditemukan");
       if (e.kategoriId === kategoriId) return;
       await db.eksemplar.update(eksemplarId, { kategoriId, perluCetak: true });
+      // Eksemplar yang pencatatannya belum terkirim: Nomor Induk dibuat server dari
+      // Kategori pada pencatatan itu, jadi pencatatannya ikut dikoreksi supaya kodenya
+      // sudah benar. Koreksi tetap dikirim juga, untuk pencatatan yang sedang di jalan
+      // dengan Kategori lama (server tidak mengubah Nomor Induk yang sudah dibuat, ADR 0001).
+      await db.outbox
+        .filter((o) => o.mutasi.jenis === "eksemplar.catat" && o.mutasi.eksemplar.id === eksemplarId)
+        .modify((o) => {
+          if (o.mutasi.jenis === "eksemplar.catat") o.mutasi.eksemplar.kategoriId = kategoriId;
+        });
       await antre({
         id: uuid(),
         jenis: "eksemplar.koreksiKategori",
