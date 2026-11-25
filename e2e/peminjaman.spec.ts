@@ -1,16 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
-import { envE2E } from "./env";
+import { expect, test } from "@playwright/test";
+import { masuk } from "./bantu";
 
 const JUDUL = "Buku Uji Peminjaman";
-
-async function masuk(page: Page) {
-  const { ownerEmail, ownerPassword } = envE2E();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Kata sandi").fill(ownerPassword);
-  await page.getByRole("button", { name: "Masuk" }).click();
-  await expect(page).toHaveURL("/");
-}
 
 test("Peminjaman: Nomor Induk dipindai (diketik), pinjamkan ke Peminjam baru, terlambat tampil di badge nav, pengingat WhatsApp, kembalikan", async ({ page }) => {
   await masuk(page);

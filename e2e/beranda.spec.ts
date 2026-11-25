@@ -1,16 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
-import { envE2E } from "./env";
+import { expect, test } from "@playwright/test";
+import { masuk } from "./bantu";
 
 const JUDUL = "Buku Uji Beranda";
-
-async function masuk(page: Page) {
-  const { ownerEmail, ownerPassword } = envE2E();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Kata sandi").fill(ownerPassword);
-  await page.getByRole("button", { name: "Masuk" }).click();
-  await expect(page).toHaveURL("/");
-}
 
 test("Beranda: Rak masih kosong, lalu menampilkan angka, rak dan chip setelah Buku ditambah", async ({ page }) => {
   // Server tidak menerima apa pun: perubahan tetap Menunggu Sinkron, jadi chip-nya stabil.
