@@ -43,6 +43,15 @@ export function buatPanggil(fetchImpl: typeof fetch, timeoutMs: number): Panggil
   };
 }
 
+/** Membatasi waktu satu pekerjaan sumber; lewat batas menjadi GalatSumber. */
+export const dalamBatas = <T>(janji: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const habis = new Promise<never>((_, tolak) => {
+    timer = setTimeout(() => tolak(new GalatSumber("Sumber terlalu lama menjawab (timeout)")), ms);
+  });
+  return Promise.race([janji, habis]).finally(() => clearTimeout(timer));
+};
+
 /** JSON dari sumber; null untuk 404 (tidak ada). Status galat lain melempar GalatSumber. */
 export async function bacaJson(res: Response): Promise<unknown | null> {
   if (res.status === 404) return null;

@@ -57,6 +57,8 @@ export type KartuScan = {
   /** Pesan ramah: ISBN tidak ditemukan, sumber tak terjangkau, dst. */
   catatan: string | null;
   bisaCobaLagi: boolean;
+  /** ISBN tidak ditemukan, sumber bisa dihubungi: pencarian cadangan lewat judul boleh ditawarkan. */
+  cadanganJudul: boolean;
   bukuId: string | null;
   eksemplarId: string | null;
   /** Hanya setelah Tersimpan dan sudah tersinkron. */
@@ -149,6 +151,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
       sumber: [],
       catatan: null,
       bisaCobaLagi: false,
+      cadanganJudul: false,
       bukuId: null,
       eksemplarId: null,
       ...awal,
@@ -170,6 +173,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
       sumber: r.sumber,
       catatan: r.catatan,
       bisaCobaLagi: r.bisaCobaLagi,
+      cadanganJudul: r.cadanganJudul ?? false,
       bukuId: null,
       eksemplarId: null,
     };
@@ -205,6 +209,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
       sumber: keadaan.sumber,
       catatan: keadaan.catatan,
       bisaCobaLagi: keadaan.bisaCobaLagi,
+      cadanganJudul: keadaan.cadanganJudul,
     });
     if (keadaan.status === "menunggu-data") {
       diPerangkat.add(kartuId);
@@ -216,6 +221,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
         sumber: keadaan.sumber,
         catatan: keadaan.catatan,
         bisaCobaLagi: keadaan.bisaCobaLagi,
+        cadanganJudul: keadaan.cadanganJudul,
         dicatat: deps.now().getTime(),
       });
     } else {
@@ -293,7 +299,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
     async cobaLagi(kartuId: string) {
       const k = kartuAda(kartuId);
       if (!k.isbn13 || k.status === "tersimpan") throw new Error("Kartu ini tidak bisa dicoba lagi");
-      ubahKartu(kartuId, { status: "mencari", catatan: null, bisaCobaLagi: false });
+      ubahKartu(kartuId, { status: "mencari", catatan: null, bisaCobaLagi: false, cadanganJudul: false });
       await cari(kartuId, k.isbn13);
     },
 
@@ -358,6 +364,7 @@ export async function buatSesiPenerimaan(deps: DepsSesi, opsi: OpsiSesi) {
           pengarang: draf.pengarang[0] ?? "",
           catatan: null,
           bisaCobaLagi: false,
+          cadanganJudul: false,
         });
         return hasil;
       } finally {

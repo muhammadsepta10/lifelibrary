@@ -1,3 +1,4 @@
+import type { Kandidat } from "@/lib/draf-buku";
 import { bacaJson, GalatSumber, type Panggil } from "./http";
 import { ambilSatu, ambilTahun, namaBahasa, normalisasiDdc, rapikan, type Parsial } from "./parsial";
 
@@ -97,4 +98,63 @@ export async function cariOpenLibrary(panggil: Panggil, isbn13: string): Promise
   if (kandidat.length) hasil.sampul = [...new Set(kandidat)];
 
   return hasil;
+}
+
+const FIELD_KANDIDAT = [
+  "key",
+  "title",
+  "author_name",
+  "first_publish_year",
+  "publisher",
+  "language",
+  "subject",
+  "ddc",
+  "cover_i",
+  "number_of_pages_median",
+].join(",");
+
+export const MAKS_KANDIDAT = 5;
+const MAKS_SUBJEK_KANDIDAT = 20;
+
+/**
+ * Pencarian tingkat karya lewat judul (+ pengarang bila ada). Hasilnya
+ * Kandidat: hanya field bibliografis, tanpa ISBN (ISBN hasil scan tidak
+ * pernah diganti). Penerbit dan tahun mengikuti edisi yang dikenal sumber,
+ * jadi Pemilik perlu mencocokkannya dengan buku fisik.
+ */
+export async function cariKandidatOpenLibrary(
+  panggil: Panggil,
+  { judul, pengarang }: { judul: string; pengarang?: string },
+): Promise<Kandidat[]> {
+  const params = new URLSearchParams({ title: judul });
+  if (pengarang) params.set("author", pengarang);
+  params.set("fields", FIELD_KANDIDAT);
+  params.set("limit", String(MAKS_KANDIDAT));
+  const badan = rekam(await bacaJson(await panggil(`https://openlibrary.org/search.json?${params}`)));
+  const docs = Array.isArray(badan?.docs) ? badan.docs : [];
+
+  const hasil: Kandidat[] = [];
+  for (const mentah of docs) {
+    const doc = rekam(mentah);
+    const kunci = teks(doc?.key)?.split("/").pop();
+    const judulKandidat = rapikan(teks(doc?.title));
+    if (!doc || !kunci || !judulKandidat) continue;
+    const k: Kandidat = { id: `openlibrary:${kunci}`, sumber: "openlibrary", judul: judulKandidat };
+    const nama = teksArray(doc.author_name);
+    if (nama.length) k.pengarang = nama;
+    const bahasa = teksArray(doc.language);
+    const subjek = teksArray(doc.subject).slice(0, MAKS_SUBJEK_KANDIDAT);
+    if (subjek.length) k.subjek = subjek;
+    const opsional = {
+      penerbit: rapikan(teksArray(doc.publisher)[0]),
+      tahun: angka(doc.first_publish_year),
+      halaman: angka(doc.number_of_pages_median),
+      bahasa: bahasa.length === 1 ? namaBahasa(bahasa[0]) : undefined,
+      kelasDdc: teksArray(doc.ddc).map(normalisasiDdc).find(Boolean),
+      sampulUrl: sampulId(doc.cover_i),
+    };
+    for (const [field, nilai] of Object.entries(opsional)) if (nilai !== undefined) Object.assign(k, { [field]: nilai });
+    hasil.push(k);
+  }
+  return hasil.slice(0, MAKS_KANDIDAT);
 }
