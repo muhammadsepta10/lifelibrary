@@ -4,7 +4,7 @@ import { gabungKontributor, normalisasiNama, periksaPengarangUtama } from "@/lib
 import { hitungNomorPanggil } from "@/lib/local-library/nomor-panggil";
 import type { Mutasi } from "@/lib/sync-protocol";
 import { buku, bukuKontributor, eksemplar, kategori, kontributor } from "@/server/db/schema";
-import { sekarangServer } from "@/server/kelola/galat";
+import { masukAntreanCetak, sekarangServer } from "@/server/kelola/galat";
 import type { FieldDitimpa } from "@/lib/sync-protocol";
 import { bagiMenangKalah, diterima, ditolak, type HasilTanpaId } from "./hasil";
 import { muatKontributor } from "./kontributor";
@@ -150,7 +150,7 @@ export async function ubahBuku(tx: Tx, m: Extract<Mutasi, { jenis: "buku.ubah" }
     if (berubah.length > 0) {
       await tx
         .update(eksemplar)
-        .set({ perluCetak: true, updatedAt: sekarangServer })
+        .set(masukAntreanCetak())
         .where(inArray(eksemplar.id, berubah));
     }
   }
