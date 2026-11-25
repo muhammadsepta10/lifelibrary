@@ -1,7 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { masuk } from "./bantu";
 
 const ISBN_TAK_ADA = "9786026486066";
+/** ISBN lain untuk tes yang tidak menyimpan Buku, supaya tidak bentrok dengan Buku dari tes pertama. */
+const ISBN_GAGAL_SAMPUL = "9780735211292";
 const ISBN_ADA = "9786024246945";
 
 const SUMBER_KOSONG = [
@@ -21,15 +23,31 @@ const KANDIDAT_BUMI = {
   halaman: 438,
   bahasa: "Indonesia",
   subjek: ["Fantasi"],
+  sampulUrl: "https://covers.openlibrary.org/b/id/12810708-L.jpg",
 };
 const KANDIDAT_LAIN = {
-  id: "openlibrary:OL307247W",
-  sumber: "openlibrary",
+  id: "google:sintetis-bumi-manusia",
+  sumber: "google",
   judul: "Bumi Manusia",
   pengarang: ["Pramoedya Ananta Toer"],
   penerbit: "Hasta Mitra",
   tahun: 1980,
 };
+
+/** PNG 1x1 untuk pratinjau sampul Kandidat dan sampul yang disajikan aplikasi; tanpa jaringan. */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const KUNCI_SAMPUL = `${ISBN_TAK_ADA}.jpg`;
+
+async function cegatSampul(page: Page, balasan: { kunci: string | null }) {
+  const permintaan: { isbn13: string; url: string }[] = [];
+  await page.route("https://covers.openlibrary.org/**", (route) => route.fulfill({ body: PNG, contentType: "image/png" }));
+  await page.route("**/api/covers/**", (route) => route.fulfill({ body: PNG, contentType: "image/png" }));
+  await page.route("**/api/metadata/sampul", async (route) => {
+    permintaan.push(route.request().postDataJSON());
+    await route.fulfill({ json: balasan });
+  });
+  return permintaan;
+}
 
 test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan lencana, judul dan ISBN scan tetap, Buku tersimpan", async ({ page }) => {
   await page.route("**/api/metadata/isbn*", (route) =>
@@ -40,9 +58,18 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
     const url = new URL(route.request().url());
     permintaanJudul.push(url);
     // Judul umum menghasilkan banyak hasil; dengan pengarang menyempit.
-    const kandidat = url.searchParams.has("pengarang") ? [KANDIDAT_BUMI] : [KANDIDAT_LAIN, KANDIDAT_BUMI];
-    await route.fulfill({ json: { kandidat, sumber: [{ sumber: "openlibrary", status: "ok" }] } });
+    const kandidat = url.searchParams.has("pengarang") ? [KANDIDAT_BUMI] : [KANDIDAT_BUMI, KANDIDAT_LAIN];
+    await route.fulfill({
+      json: {
+        kandidat,
+        sumber: [
+          { sumber: "openlibrary", status: "ok" },
+          { sumber: "google", status: "ok" },
+        ],
+      },
+    });
   });
+  const permintaanSampul = await cegatSampul(page, { kunci: KUNCI_SAMPUL });
 
   await masuk(page);
   await page.goto("/tambah/isbn");
@@ -68,6 +95,14 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
   expect(permintaanJudul[0].searchParams.get("judul")).toBe("Bumi");
   expect(permintaanJudul[0].searchParams.has("pengarang")).toBe(false);
 
+  // Tiap Kandidat menyebut sumbernya; yang punya sampul menampilkan pratinjau kecil dari alamat luar.
+  const barisBumi = daftar.getByRole("listitem").filter({ hasText: "Bumi (edisi lain)" });
+  await expect(barisBumi.getByText("Open Library", { exact: true })).toBeVisible();
+  await expect(daftar.getByRole("listitem").filter({ hasText: "Bumi Manusia" }).getByText("Google Books", { exact: true })).toBeVisible();
+  await expect(barisBumi.getByTestId("sampul-kandidat")).toHaveAttribute("src", KANDIDAT_BUMI.sampulUrl);
+  await expect(daftar.getByTestId("sampul-kandidat")).toHaveCount(1);
+  expect(permintaanSampul).toHaveLength(0);
+
   // Pengarang pertama memicu pencarian ulang dengan judul + pengarang; daftar menyempit.
   await page.getByLabel("Pengarang Utama").fill("Tere Liye");
   await expect(daftar.getByRole("listitem")).toHaveCount(1);
@@ -84,6 +119,12 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
   await expect(page.locator("#bahasa")).toHaveValue("Indonesia");
   await expect(page.locator("label[for=penerbit]").getByText("dari edisi lain, cek")).toBeVisible();
   await expect(page.locator("label[for=halaman]").getByText("dari edisi lain, cek")).toBeVisible();
+
+  // Sampul Kandidat diunduh server dengan kunci ISBN hasil scan, tampil di draf dengan lencana.
+  expect(permintaanSampul).toEqual([{ isbn13: ISBN_TAK_ADA, url: KANDIDAT_BUMI.sampulUrl }]);
+  const sampulDraf = page.getByRole("img", { name: "Sampul Bumi" });
+  await expect(sampulDraf).toHaveAttribute("src", `/api/covers/${KUNCI_SAMPUL}`);
+  await expect(page.getByText("dari edisi lain, cek").last()).toBeVisible();
 
   // Isian Pemilik dan ISBN scan tidak berubah.
   await expect(page.locator("#judul")).toHaveValue("Bumi");
@@ -107,6 +148,31 @@ test("ISBN tidak ditemukan: ketik judul, pilih Kandidat, field terisi dengan len
   await expect(page.getByRole("heading", { name: "Bumi", exact: true })).toBeVisible();
   await expect(page.getByText(`ISBN ${ISBN_TAK_ADA}`)).toBeVisible();
   await expect(page.getByText("PT Gramedia Pustaka Utama").first()).toBeVisible();
+  // Sampul Kandidat ikut tersimpan di Buku.
+  await expect(page.getByRole("img", { name: "Sampul Bumi" })).toHaveAttribute("src", new RegExp(`${KUNCI_SAMPUL}$`));
+});
+
+test("ISBN tidak ditemukan: unduhan sampul Kandidat gagal, field teks tetap terisi tanpa pesan galat", async ({ page }) => {
+  await page.route("**/api/metadata/isbn*", (route) =>
+    route.fulfill({ json: { ditemukan: false, isbn13: ISBN_GAGAL_SAMPUL, sumber: SUMBER_KOSONG, semuaGalat: false } }),
+  );
+  await page.route("**/api/metadata/judul*", (route) =>
+    route.fulfill({ json: { kandidat: [KANDIDAT_BUMI], sumber: [{ sumber: "openlibrary", status: "ok" }] } }),
+  );
+  const permintaanSampul = await cegatSampul(page, { kunci: null });
+
+  await masuk(page);
+  await page.goto("/tambah/isbn");
+  await page.getByLabel("ISBN", { exact: true }).fill(ISBN_GAGAL_SAMPUL);
+  await page.getByRole("button", { name: "Cari" }).click();
+  await page.locator("#judul").fill("Bumi");
+  await page.getByTestId("kandidat-judul").getByRole("button", { name: /Bumi \(edisi lain\)/ }).click();
+
+  await expect(page.locator("#penerbit")).toHaveValue("PT Gramedia Pustaka Utama");
+  await expect.poll(() => permintaanSampul.length).toBe(1);
+  await expect(page.getByRole("img", { name: /Sampul/ })).toHaveCount(0);
+  // Tidak ada pesan galat (pengumum rute Next.js juga ber-role alert, tetapi kosong).
+  await expect(page.getByRole("alert").filter({ hasText: /./ })).toHaveCount(0);
 });
 
 test("ISBN ditemukan: tidak ada pencarian judul sama sekali", async ({ page }) => {
